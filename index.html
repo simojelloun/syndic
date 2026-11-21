@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Syndic de la résidence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one phone-width column; the home screen opens on the building's
+   facade at night, where a lit window is a lot whose dues are paid this month. */
+:root{
+  --bg:#EEF2F1; --surface:#FFFFFF; --surface2:#F5F8F7; --ink:#12242A;
+  --muted:#56686E; --line:#D5DEDC; --accent:#0E5E63; --accent-soft:#D9ECEA; --on-accent:#FFFFFF;
+  --wall:#0E3B40; --on-wall:#DCEDEA; --sun:#F0B93A;
+  --ok:#1E7B4F; --warn:#A05F06; --crit:#B4362E;
+  --display:"Bricolage Grotesque","Figtree",system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1518; --surface:#14232A; --surface2:#1A2D35; --ink:#E8EFEE; --muted:#93A5A9;
+    --line:#27404A; --accent:#5CC2BD; --accent-soft:#17383B; --on-accent:#062022;
+    --wall:#0A2B30; --on-wall:#DCEDEA; --sun:#F0B93A;
+    --ok:#5FCB94; --warn:#E3A548; --crit:#F0857C; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1518; --surface:#14232A; --surface2:#1A2D35; --ink:#E8EFEE; --muted:#93A5A9;
+  --line:#27404A; --accent:#5CC2BD; --accent-soft:#17383B; --on-accent:#062022;
+  --wall:#0A2B30; --on-wall:#DCEDEA; --sun:#F0B93A;
+  --ok:#5FCB94; --warn:#E3A548; --crit:#F0857C; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.45 var(--body);-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+.app{height:100%;max-width:520px;margin:0 auto;display:flex;flex-direction:column;background:var(--bg);position:relative}
+.top{padding:14px 18px 10px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.top h1{font:700 22px/1.15 var(--display);margin:0;letter-spacing:-.01em;text-wrap:balance}
+.top span{font-size:13px;color:var(--muted);white-space:nowrap}
+main>*{flex:none}
+main{flex:1;min-height:0;overflow-y:auto;padding:4px 16px 96px;display:flex;flex-direction:column;gap:16px}
+h2{font:700 18px/1.2 var(--display);margin:0;text-wrap:balance}
+h3{font:600 13px/1.2 var(--body);margin:0;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+p{margin:0}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+
+/* bottom navigation */
+.nav{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);background:var(--surface);border-top:1px solid var(--line);padding:6px 4px 8px}
+.nav a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:10px;text-decoration:none;color:var(--muted);font-size:11.5px;font-weight:600}
+.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav a[aria-current="page"]{color:var(--accent);background:var(--accent-soft)}
+.fab{position:absolute;right:16px;bottom:84px;border:0;border-radius:999px;background:var(--accent);color:var(--on-accent);font-weight:700;padding:14px 20px;box-shadow:0 6px 18px rgba(0,0,0,.22)}
+
+/* facade */
+.hero{background:var(--wall);color:var(--on-wall);border-radius:20px;padding:18px 16px 0;display:flex;flex-direction:column;gap:14px;overflow:hidden}
+.hero-top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.eyebrow{font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.75;font-weight:600}
+.hero .big{font:700 24px/1.1 var(--display);margin-top:4px;text-wrap:balance}
+.pct{white-space:nowrap;font:700 40px/1 var(--display);color:var(--sun);font-variant-numeric:tabular-nums}
+.facade{display:flex;flex-direction:column;gap:6px}
+.bloc-name{font-size:12px;opacity:.7;font-weight:600;margin-top:4px}
+.roof{height:6px;border-radius:6px 6px 0 0;background:rgba(255,255,255,.16);margin:0 -4px}
+.floor{display:flex;align-items:center;gap:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1)}
+.fl{width:34px;font-size:12px;opacity:.7;flex:none;font-variant-numeric:tabular-nums}
+.wins{display:flex;flex-wrap:wrap;gap:6px}
+.win{min-width:44px;height:40px;padding:0 6px;border-radius:7px 7px 2px 2px;border:1.5px solid transparent;font:700 13px var(--body);font-variant-numeric:tabular-nums}
+.win.ok{background:var(--sun);color:#2B1F00;box-shadow:0 0 14px rgba(240,185,58,.35)}
+.win.part{background:repeating-linear-gradient(135deg,rgba(240,185,58,.55) 0 6px,transparent 6px 12px);border-color:var(--sun);color:#fff}
+.win.due{background:rgba(0,0,0,.28);border:1.5px dashed #F2958C;color:#F9CFCA}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;padding:2px 0 14px;opacity:.9}
+.legend i{display:inline-block;width:14px;height:12px;border-radius:3px 3px 1px 1px;margin-right:5px;vertical-align:-1px;border:1.5px solid transparent}
+.legend .ok{background:var(--sun)} .legend .part{border-color:var(--sun);background:repeating-linear-gradient(135deg,rgba(240,185,58,.55) 0 3px,transparent 3px 6px)} .legend .due{border:1.5px dashed #F2958C}
+
+/* tiles, cards, rows */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.tile.wide{grid-column:1/-1}
+.tile b{font:700 22px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.tile span{font-size:13px;color:var(--muted)}
+.tile.crit b{color:var(--crit)}
+.sec{display:flex;flex-direction:column;gap:8px}
+.sec-head{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:36px}
+.list{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.list li{display:flex;align-items:stretch;border-top:1px solid var(--line)}
+.list li:first-child{border-top:0}
+.list li[hidden]{display:none}
+.row{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:12px 14px;background:none;border:0;text-align:left}
+.row .grow{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.row b{font-weight:600;overflow-wrap:anywhere}
+.row small{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.badge{flex:none;min-width:42px;height:38px;padding:0 6px;border-radius:7px 7px 2px 2px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font:700 14px var(--body);font-variant-numeric:tabular-nums}
+.stripe{flex:none;width:5px}
+.stripe.urgente{background:var(--crit)} .stripe.normale{background:var(--warn)} .stripe.basse{background:var(--line)}
+.pill{flex:none;font-size:12.5px;font-weight:700;padding:4px 9px;border-radius:999px;white-space:nowrap}
+.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,var(--surface))}
+.pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,var(--surface))}
+.pill.crit{color:var(--crit);background:color-mix(in srgb,var(--crit) 13%,var(--surface))}
+.pill.neutral{color:var(--muted);background:var(--surface2);border:1px solid var(--line)}
+.amount{flex:none;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.side{display:flex;align-items:center;padding-right:12px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 14px;font-weight:600;min-height:42px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.sm{padding:6px 12px;min-height:36px;font-size:14px}
+.btn.danger{color:var(--crit)}
+.btn.block{width:100%}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px}
+.card p{overflow-wrap:anywhere;white-space:pre-line}
+.note{background:var(--accent-soft);border-radius:12px;padding:10px 14px;font-size:14px}
+.note.warn{background:color-mix(in srgb,var(--warn) 16%,var(--surface))}
+.empty{text-align:center;color:var(--muted);padding:22px 14px;background:var(--surface);border:1px dashed var(--line);border-radius:var(--r);display:flex;flex-direction:column;gap:10px;align-items:center}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
+.seg button{border:0;background:none;border-radius:9px;padding:9px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.month{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.month b{font:700 18px var(--display);text-transform:capitalize}
+.month button{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px}
+.month button:disabled{opacity:.35;cursor:default}
+.bar{height:10px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.cat{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;font-size:14px}
+.search{width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12.5px;font-weight:600;padding:4px 9px;border-radius:8px;border:1px solid var(--line);font-variant-numeric:tabular-nums}
+.chip.ok{color:var(--ok)} .chip.part{color:var(--warn);border-style:dashed} .chip.due{color:var(--crit);border-color:var(--crit)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:15px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right;overflow-wrap:anywhere}
+
+/* sheet */
+.scrim{position:fixed;inset:0;background:rgba(5,15,18,.55);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.scrim[hidden]{display:none}
+.sheet{width:100%;max-width:520px;max-height:92%;overflow-y:auto;background:var(--surface);border-radius:20px 20px 0 0;padding:16px 18px 22px;display:flex;flex-direction:column;gap:14px}
+.sheet header{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sheet header button{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface2);font-size:20px;line-height:1}
+#sheet-body{display:flex;flex-direction:column;gap:14px}
+form{display:flex;flex-direction:column;gap:12px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:13.5px;font-weight:600;color:var(--muted)}
+.field input,.field select,.field textarea{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface2)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.check{display:flex;align-items:center;gap:10px;font-weight:500;min-height:40px}
+.check input{width:20px;height:20px}
+textarea.copy{width:100%;min-height:170px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);font-size:14.5px;line-height:1.45}
+.toast{position:fixed;left:50%;transform:translateX(-50%);width:min(488px,calc(100% - 32px));top:12px;background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:12px;font-weight:600;font-size:14.5px;z-index:20;text-align:center}
+.toast[hidden]{display:none}
+@media (prefers-reduced-motion:no-preference){
+  .sheet{animation:up .22s ease-out}
+  @keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top"><h1 id="res-name">Ma résidence</h1><span id="res-sub">Syndic</span></header>
+  <main id="view" tabindex="-1"></main>
+  <button class="fab" id="fab" hidden></button>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <nav class="nav" aria-label="Sections">
+    <a href="#accueil" data-tab="accueil"><svg viewBox="0 0 24 24"><path d="M4 21V5l8-2 8 2v16M9 21v-4h6v4M8 8h2M14 8h2M8 12h2M14 12h2"/></svg>Accueil</a>
+    <a href="#lots" data-tab="lots"><svg viewBox="0 0 24 24"><path d="M15 3h4a1 1 0 0 1 1 1v17H9V4a1 1 0 0 1 1-1h1M4 21h17M13.5 12.5h.01M9 21V8l-4 1v12"/></svg>Lots</a>
+    <a href="#caisse" data-tab="caisse"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg>Caisse</a>
+    <a href="#incidents" data-tab="incidents"><svg viewBox="0 0 24 24"><path d="M12 3l9.5 17h-19zM12 10v4M12 17h.01"/></svg>Incidents</a>
+    <a href="#residence" data-tab="residence"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4zM8 9h8M8 12h5"/></svg>Résidence</a>
+  </nav>
+</div>
+<div class="scrim" id="scrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <header><h2 id="sheet-title"></h2><button type="button" data-act="close" aria-label="Fermer">×</button></header>
+    <div id="sheet-body"></div>
+  </div>
+</div>
+<script>
+"use strict";
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isFinite(n) ? n : 0; };
+const pad = n => String(n).padStart(2, '0');
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const thisMonth = () => today().slice(0, 7);
+const frDate = d => d ? String(d).split('-').reverse().join('/') : '';
+const monthLabel = (m, short) => { const [y, mo] = m.split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('fr-FR', { month: short ? 'short' : 'long', year: 'numeric' }); };
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
+const money = n => nf.format(Math.round(num(n) * 100) / 100) + ' ' + (S.cfg.devise || 'DH');
+const etageLabel = e => { const n = num(e); return n <= 0 ? 'RDC' : n === 1 ? '1er' : n + 'e'; };
+const natural = (a, b) => String(a).localeCompare(String(b), 'fr', { numeric: true });
+
+/* ---------- state ---------- */
+const COLS = ['lots', 'paiements', 'depenses', 'incidents', 'annonces'];
+const DEFCFG = { nom: 'Ma résidence', adresse: '', devise: 'DH', debut: thisMonth(), soldeInitial: 0, cotisationDefaut: 200 };
+const S = { mode: 'loading', cfg: { ...DEFCFG }, admin: true, report: true, uid: null, stale: false, got: new Set() };
+COLS.forEach(c => S[c] = []);
+const ui = { tab: 'accueil', mois: null, seg: 'cotisations' };
+const TABS = ['accueil', 'lots', 'caisse', 'incidents', 'residence'];
+const CATS = ['Nettoyage', 'Gardiennage', 'Électricité', 'Eau', 'Ascenseur', 'Entretien', 'Jardinage', 'Assurance', 'Divers'];
+const MODES = ['Espèces', 'Virement', 'Chèque'];
+let db = null;
+const LS = 'syndic-local-v1';
+
+/* ---------- storage ---------- */
+function persistLocal() {
+  try { const o = { cfg: S.cfg }; COLS.forEach(c => o[c] = S[c]); localStorage.setItem(LS, JSON.stringify(o)); } catch (e) {}
+}
+function loadLocal() {
+  try { const o = JSON.parse(localStorage.getItem(LS) || 'null'); if (o) { S.cfg = { ...DEFCFG, ...o.cfg }; COLS.forEach(c => S[c] = Array.isArray(o[c]) ? o[c] : []); } } catch (e) {}
+}
+function fail(e) {
+  const code = e && e.code;
+  toast(code === 'quota_exceeded' ? 'Espace de stockage plein. Supprimez d’anciens éléments.'
+    : code === 'invalid_argument' ? 'Modification refusée. Votre accès est peut-être en lecture seule.'
+    : 'Enregistrement impossible. Réessayez dans un instant.');
+}
+async function save(col, existing, values) {
+  const id = existing && existing.id ? existing.id : newId();
+  const data = JSON.parse(JSON.stringify({ ...(existing || {}), ...values }));
+  delete data.id; if (existing) delete data.exemple;
+  if (S.mode === 'db') {
+    try { await db.collection(col).doc(id).set(data); } catch (e) { fail(e); return null; }
+  } else {
+    const row = { id, ...data }, i = S[col].findIndex(d => d.id === id);
+    if (i >= 0) S[col][i] = row; else S[col].push(row);
+    persistLocal(); schedule();
+  }
+  return id;
+}
+async function remove(col, id) {
+  if (S.mode === 'db') { try { await db.collection(col).doc(id).delete(); } catch (e) { fail(e); return false; } }
+  else { S[col] = S[col].filter(d => d.id !== id); persistLocal(); schedule(); }
+  return true;
+}
+async function saveCfg(values) {
+  const data = JSON.parse(JSON.stringify({ ...S.cfg, ...values })); delete data.exemple;
+  if (S.mode === 'db') { try { await db.doc('config/residence').set(data); } catch (e) { fail(e); return false; } }
+  else { S.cfg = data; persistLocal(); schedule(); }
+  return true;
+}
+function subscribe() {
+  const total = COLS.length + 1;
+  const timer = setTimeout(() => { S.stale = true; schedule(); }, 10000);
+  const got = k => { S.got.add(k); if (S.got.size >= total) { clearTimeout(timer); S.stale = false; } schedule(); };
+  COLS.forEach(c => db.collection(c).onSnapshot(
+    snap => { S[c] = snap.docs.map(d => ({ id: d.id, ...d.data() })); got(c); },
+    () => { S.broken = true; got(c); }));
+  db.doc('config/residence').onSnapshot(
+    snap => { S.cfg = { ...DEFCFG, ...(snap.exists ? snap.data() : {}) }; got('cfg'); },
+    () => { S.broken = true; got('cfg'); });
+}
+async function boot() {
+  route(); render();
+  let user = null;
+  try {
+    if (window.claude && window.claude.use) [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+  } catch (e) { db = null; }
+  if (!db) { loadLocal(); S.mode = 'local'; render(); return; }
+  if (user) {
+    S.admin = await user.canEdit();
+    S.report = true; /* la règle « incidents » autorise les contributeurs ; un refus s’affiche à l’enregistrement */
+    S.uid = await user.id();
+  }
+  S.mode = 'db';
+  subscribe(); render();
+}
+
+/* ---------- money logic ---------- */
+function months() {
+  const b = thisMonth(), a = /^\d{4}-\d{2}$/.test(S.cfg.debut || '') ? S.cfg.debut : b;
+  let [y, m] = a.split('-').map(Number); const [by, bm] = b.split('-').map(Number);
+  const out = []; let guard = 0;
+  while ((y < by || (y === by && m <= bm)) && guard++ < 240) { out.push(y + '-' + pad(m)); if (++m > 12) { m = 1; y++; } }
+  return out.length ? out : [b];
+}
+function payIndex() { const m = new Map(); for (const p of S.paiements) { const k = p.lotId + '|' + p.mois; m.set(k, (m.get(k) || 0) + num(p.montant)); } return m; }
+function statut(lot, mois, P) {
+  const c = num(lot.cotisation), paid = P.get(lot.id + '|' + mois) || 0;
+  return { paid, due: Math.max(0, c - paid), st: paid >= c ? 'ok' : paid > 0 ? 'part' : 'due' };
+}
+function arriere(lot, P) { let t = 0; const ms = []; for (const m of months()) { const s = statut(lot, m, P); if (s.due > 0) { t += s.due; ms.push(m); } } return { t, ms }; }
+const sortedLots = () => [...S.lots].sort((a, b) => natural(a.bloc || '', b.bloc || '') || num(a.etage) - num(b.etage) || natural(a.numero, b.numero));
+const lotName = l => l ? 'Lot ' + l.numero + (l.bloc ? ' (' + l.bloc + ')' : '') : 'Lot supprimé';
+const sumOf = (arr, f) => arr.reduce((t, x) => t + num(f(x)), 0);
+const caisse = () => num(S.cfg.soldeInitial) + sumOf(S.paiements, p => p.montant) - sumOf(S.depenses, d => d.montant);
+
+/* ---------- rendering ---------- */
+let raf = 0;
+function schedule() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
+function route() { const h = location.hash.slice(1); ui.tab = TABS.includes(h) ? h : 'accueil'; }
+function banners() {
+  let h = '';
+  if (S.mode === 'local') h += '<p class="note warn">Aperçu hors connexion : les saisies restent sur cet appareil.</p>';
+  if (S.stale) h += '<p class="note warn">Les données ne répondent pas encore. L’affichage peut être incomplet.</p>';
+  if (S.broken) h += '<p class="note warn">Une partie des données n’a pas pu être chargée.</p>';
+  return h;
+}
+function render() {
+  $('#res-name').textContent = S.cfg.nom || 'Ma résidence';
+  $('#res-sub').textContent = S.admin ? 'Espace syndic' : 'Espace résident';
+  document.querySelectorAll('.nav a').forEach(a => a.dataset.tab === ui.tab ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  const v = $('#view'), fab = $('#fab');
+  fab.hidden = true;
+  if (S.mode === 'loading' || (S.mode === 'db' && S.got.size < COLS.length + 1 && !S.stale)) { v.innerHTML = '<p class="empty">Chargement des données…</p>'; return; }
+  const ms = months(); if (!ui.mois || !ms.includes(ui.mois)) ui.mois = ms[ms.length - 1];
+  v.innerHTML = banners() + VIEWS[ui.tab]();
+  const f = FABS[ui.tab] && FABS[ui.tab]();
+  if (f) { fab.hidden = false; fab.textContent = f[0]; fab.dataset.act = f[1]; }
+}
+const FABS = {
+  lots: () => S.admin && ['+ Lot', 'lot-new'],
+  caisse: () => S.admin && (ui.seg === 'depenses' ? ['+ Dépense', 'dep-new'] : S.lots.length ? ['+ Encaissement', 'pay'] : null),
+  incidents: () => S.report && ['+ Signaler', 'inc-new'],
+};
+function facade(mois, P) {
+  const lots = sortedLots(), blocs = [...new Set(lots.map(l => l.bloc || ''))];
+  return '<div class="facade">' + blocs.map(b => {
+    const inB = lots.filter(l => (l.bloc || '') === b), floors = [...new Set(inB.map(l => num(l.etage)))].sort((x, y) => y - x);
+    return (blocs.length > 1 || b ? `<div class="bloc-name">${esc(b ? 'Immeuble ' + b : 'Sans immeuble')}</div>` : '') + '<div class="roof"></div>' +
+      floors.map(f => `<div class="floor"><span class="fl">${etageLabel(f)}</span><div class="wins">` +
+        inB.filter(l => num(l.etage) === f).map(l => { const s = statut(l, mois, P); return `<button class="win ${s.st}" data-act="lot" data-id="${esc(l.id)}" aria-label="${esc(lotName(l))} : ${s.st === 'ok' ? 'payé' : s.st === 'part' ? 'paiement partiel' : 'impayé'}">${esc(l.numero)}</button>`; }).join('') +
+        '</div></div>').join('');
+  }).join('') + '</div>';
+}
+const VIEWS = {
+  accueil() {
+    if (!S.lots.length) return `<div class="empty"><h2>Bienvenue</h2><p>${S.admin ? 'Renseignez la résidence, puis ajoutez les lots pour suivre les cotisations.' : 'Le syndic n’a pas encore renseigné les lots.'}</p>${S.admin ? '<div class="btns"><button class="btn" data-act="cfg">Renseigner la résidence</button><button class="btn primary" data-act="lot-new">Ajouter un lot</button></div>' : ''}</div>`;
+    const P = payIndex(), m = thisMonth(), lots = sortedLots();
+    const ok = lots.filter(l => statut(l, m, P).st === 'ok').length, pct = Math.round(ok / lots.length * 100);
+    const arr = lots.map(l => ({ l, a: arriere(l, P) })).filter(x => x.a.t > 0).sort((x, y) => y.a.t - x.a.t);
+    const impayes = sumOf(arr, x => x.a.t), depMois = sumOf(S.depenses.filter(d => (d.date || '').startsWith(m)), d => d.montant);
+    const open = S.incidents.filter(i => i.statut !== 'resolu').sort((a, b) => (b.priorite === 'urgente') - (a.priorite === 'urgente') || natural(b.date, a.date));
+    const pin = S.annonces.filter(a => a.epingle).sort((a, b) => natural(b.date, a.date))[0];
+    const hasEx = COLS.some(c => S[c].some(d => d.exemple));
+    let todo = '';
+    open.slice(0, 3).forEach(i => todo += `<li><span class="stripe ${esc(i.priorite || 'normale')}"></span><button class="row" data-act="inc" data-id="${esc(i.id)}"><span class="grow"><b>${esc(i.titre)}</b><small>Incident · ${esc(i.lieu || 'lieu non précisé')}</small></span><span class="pill ${i.statut === 'encours' ? 'warn' : 'crit'}">${i.statut === 'encours' ? 'En cours' : 'Ouvert'}</span></button></li>`);
+    arr.slice(0, 3).forEach(x => todo += `<li><button class="row" data-act="lot" data-id="${esc(x.l.id)}"><span class="badge">${esc(x.l.numero)}</span><span class="grow"><b>${esc(x.l.proprietaire || lotName(x.l))}</b><small>${x.a.ms.length} mois en retard</small></span><span class="amount" style="color:var(--crit)">${money(x.a.t)}</span></button></li>`);
+    return (hasEx ? `<p class="note">Données d’exemple affichées. ${S.admin ? 'Supprimez-les depuis Résidence, Réglages.' : ''}</p>` : '') +
+      `<section class="hero"><div class="hero-top"><div><p class="eyebrow">Cotisations · ${esc(monthLabel(m))}</p><p class="big">${ok} lot${ok > 1 ? 's' : ''} sur ${lots.length} à jour</p></div><div class="pct">${pct} %</div></div>${facade(m, P)}<div class="legend"><span><i class="ok"></i>Payé</span><span><i class="part"></i>Partiel</span><span><i class="due"></i>Impayé</span></div></section>
+      <div class="tiles"><div class="tile wide"><span>Solde de caisse</span><b>${money(caisse())}</b></div>
+      <div class="tile ${impayes > 0 ? 'crit' : ''}"><span>Impayés cumulés</span><b>${money(impayes)}</b></div>
+      <div class="tile"><span>Dépenses du mois</span><b>${money(depMois)}</b></div></div>
+      <section class="sec"><h3>À traiter</h3>${todo ? '<ul class="list">' + todo + '</ul>' : '<p class="empty">Rien à traiter pour le moment.</p>'}</section>` +
+      (pin ? `<section class="sec"><h3>Annonce épinglée</h3><div class="card"><h2>${esc(pin.titre)}</h2><p>${esc(pin.texte)}</p><span class="small muted">${frDate(pin.date)}</span></div></section>` : '');
+  },
+  lots() {
+    if (!S.lots.length) return `<div class="empty"><p>Aucun lot enregistré.</p>${S.admin ? '<button class="btn primary" data-act="lot-new">Ajouter un lot</button>' : ''}</div>`;
+    const P = payIndex();
+    return `<input class="search" id="lot-search" type="search" placeholder="Chercher un lot ou un copropriétaire" aria-label="Chercher un lot">
+      <ul class="list" id="lot-list">` + sortedLots().map(l => { const a = arriere(l, P);
+        return `<li data-q="${esc((l.numero + ' ' + (l.proprietaire || '') + ' ' + (l.bloc || '')).toLowerCase())}"><button class="row" data-act="lot" data-id="${esc(l.id)}"><span class="badge">${esc(l.numero)}</span><span class="grow"><b>${esc(l.proprietaire || 'Copropriétaire non renseigné')}</b><small>${l.bloc ? 'Immeuble ' + esc(l.bloc) + ' · ' : ''}${etageLabel(l.etage)} · ${money(l.cotisation)} / mois</small></span><span class="pill ${a.t > 0 ? 'crit' : 'ok'}">${a.t > 0 ? 'Doit ' + money(a.t) : 'À jour'}</span></button></li>`; }).join('') + '</ul>';
+  },
+  caisse() {
+    const seg = `<div class="seg"><button data-act="seg" data-v="cotisations" aria-pressed="${ui.seg === 'cotisations'}">Cotisations</button><button data-act="seg" data-v="depenses" aria-pressed="${ui.seg === 'depenses'}">Dépenses</button></div>`;
+    if (ui.seg === 'depenses') {
+      const deps = [...S.depenses].sort((a, b) => natural(b.date, a.date)), total = sumOf(deps, d => d.montant), m = thisMonth();
+      const byCat = {}; deps.forEach(d => byCat[d.categorie || 'Divers'] = (byCat[d.categorie || 'Divers'] || 0) + num(d.montant));
+      const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]), max = cats.length ? cats[0][1] : 1;
+      return seg + `<div class="tiles"><div class="tile"><span>Ce mois</span><b>${money(sumOf(deps.filter(d => (d.date || '').startsWith(m)), d => d.montant))}</b></div><div class="tile"><span>Total enregistré</span><b>${money(total)}</b></div></div>` +
+        (cats.length ? `<section class="sec"><h3>Par poste</h3><div class="card">${cats.map(([c, v]) => `<div class="cat"><span>${esc(c)}</span><div class="bar"><i style="width:${Math.max(3, v / max * 100)}%"></i></div><span class="num">${money(v)}</span></div>`).join('')}</div></section>` : '') +
+        `<section class="sec"><h3>Journal des dépenses</h3>${deps.length ? '<ul class="list">' + deps.map(d => `<li><button class="row" data-act="dep" data-id="${esc(d.id)}"><span class="grow"><b>${esc(d.libelle)}</b><small>${frDate(d.date)} · ${esc(d.categorie || 'Divers')}${d.fournisseur ? ' · ' + esc(d.fournisseur) : ''}</small></span><span class="amount">${money(d.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="empty">Aucune dépense enregistrée.</p>'}</section>`;
+    }
+    if (!S.lots.length) return seg + '<p class="empty">Ajoutez d’abord les lots pour suivre les cotisations.</p>';
+    const ms = months(), i = ms.indexOf(ui.mois), P = payIndex(), lots = sortedLots();
+    const attendu = sumOf(lots, l => l.cotisation), recu = sumOf(lots, l => Math.min(statut(l, ui.mois, P).paid, num(l.cotisation)));
+    return seg + `<div class="month"><button data-act="mois" data-d="-1" aria-label="Mois précédent" ${i <= 0 ? 'disabled' : ''}>‹</button><b>${esc(monthLabel(ui.mois))}</b><button data-act="mois" data-d="1" aria-label="Mois suivant" ${i >= ms.length - 1 ? 'disabled' : ''}>›</button></div>
+      <div class="card"><div class="sec-head"><span>Encaissé <b class="num">${money(recu)}</b></span><span class="muted">sur ${money(attendu)}</span></div><div class="bar"><i style="width:${attendu ? recu / attendu * 100 : 0}%"></i></div></div>
+      <ul class="list">` + lots.map(l => { const s = statut(l, ui.mois, P); const last = S.paiements.filter(p => p.lotId === l.id && p.mois === ui.mois).sort((a, b) => natural(b.date, a.date))[0];
+        const sub = s.st === 'ok' ? 'Payé' + (last ? ' le ' + frDate(last.date) + ' · ' + esc(last.mode || '') : '') : s.st === 'part' ? 'Reçu ' + money(s.paid) + ', reste ' + money(s.due) : 'Reste ' + money(s.due);
+        const side = s.st === 'ok' ? '<span class="pill ok">Payé</span>' : S.admin ? `<button class="btn sm primary" data-act="pay" data-id="${esc(l.id)}">Encaisser</button>` : `<span class="pill ${s.st === 'part' ? 'warn' : 'crit'}">${s.st === 'part' ? 'Partiel' : 'Impayé'}</span>`;
+        return `<li><button class="row" data-act="${last ? 'recu' : 'lot'}" data-id="${esc(last ? last.id : l.id)}"><span class="badge">${esc(l.numero)}</span><span class="grow"><b>${esc(l.proprietaire || lotName(l))}</b><small>${sub}</small></span></button><span class="side">${side}</span></li>`; }).join('') + '</ul>';
+  },
+  incidents() {
+    const sorted = [...S.incidents].sort((a, b) => natural(b.date, a.date));
+    const open = sorted.filter(i => i.statut !== 'resolu'), done = sorted.filter(i => i.statut === 'resolu');
+    const li = i => `<li><span class="stripe ${esc(i.priorite || 'normale')}"></span><button class="row" data-act="inc" data-id="${esc(i.id)}"><span class="grow"><b>${esc(i.titre)}</b><small>${frDate(i.date)}${i.lieu ? ' · ' + esc(i.lieu) : ''}${i.priorite === 'urgente' ? ' · Urgent' : ''}</small></span><span class="pill ${i.statut === 'resolu' ? 'ok' : i.statut === 'encours' ? 'warn' : 'crit'}">${i.statut === 'resolu' ? 'Résolu' : i.statut === 'encours' ? 'En cours' : 'Ouvert'}</span></button></li>`;
+    return `<section class="sec"><h3>À suivre (${open.length})</h3>${open.length ? '<ul class="list">' + open.map(li).join('') + '</ul>' : '<p class="empty">Aucun incident en cours.</p>'}</section>` +
+      (done.length ? `<section class="sec"><h3>Résolus (${done.length})</h3><ul class="list">${done.map(li).join('')}</ul></section>` : '');
+  },
+  residence() {
+    const ann = [...S.annonces].sort((a, b) => (b.epingle ? 1 : 0) - (a.epingle ? 1 : 0) || natural(b.date, a.date));
+    const hasEx = COLS.some(c => S[c].some(d => d.exemple));
+    return `<section class="sec"><div class="sec-head"><h3>Annonces</h3>${S.admin ? '<button class="btn sm" data-act="ann-new">Publier</button>' : ''}</div>${ann.length ? ann.map(a => `<div class="card"><div class="sec-head"><h2>${esc(a.titre)}</h2>${a.epingle ? '<span class="pill neutral">Épinglée</span>' : ''}</div><p>${esc(a.texte)}</p><div class="sec-head"><span class="small muted">${frDate(a.date)}</span>${S.admin ? `<button class="btn sm" data-act="ann" data-id="${esc(a.id)}">Modifier</button>` : ''}</div></div>`).join('') : '<p class="empty">Aucune annonce.</p>'}</section>
+      <section class="sec"><h3>La résidence</h3><div class="card"><dl class="kv"><dt>Nom</dt><dd>${esc(S.cfg.nom)}</dd><dt>Adresse</dt><dd>${esc(S.cfg.adresse || 'Non renseignée')}</dd><dt>Lots</dt><dd>${S.lots.length}</dd><dt>Suivi depuis</dt><dd>${esc(monthLabel(months()[0]))}</dd><dt>Solde de caisse</dt><dd class="num">${money(caisse())}</dd></dl>
+      ${S.admin ? `<div class="btns"><button class="btn" data-act="cfg">Réglages</button><button class="btn" data-act="csv">Journal de caisse (CSV)</button>${hasEx ? '<button class="btn danger" data-act="purge">Supprimer les exemples</button>' : ''}</div>` : ''}</div></section>`;
+  },
+};
+
+/* ---------- sheets and forms ---------- */
+let formCtx = null, lastFocus = null;
+function openSheet(title, html) {
+  lastFocus = document.activeElement;
+  $('#sheet-title').textContent = title; $('#sheet-body').innerHTML = html; $('#scrim').hidden = false;
+  const f = $('#sheet-body input:not([type=checkbox]), #sheet-body select, #sheet-body textarea, #sheet-body button'); if (f) f.focus();
+}
+function closeSheet() { $('#scrim').hidden = true; $('#sheet-body').innerHTML = ''; formCtx = null; if (lastFocus && lastFocus.focus) lastFocus.focus(); }
+function fieldHTML(f) {
+  const id = 'f-' + f.id, req = f.required ? ' required' : '', v = f.value ?? '';
+  if (f.type === 'checkbox') return `<label class="check" for="${id}"><input type="checkbox" id="${id}"${f.value ? ' checked' : ''}>${esc(f.label)}</label>`;
+  let c;
+  if (f.type === 'select') c = `<select id="${id}"${req}>${f.options.map(o => `<option value="${esc(o[0])}"${String(o[0]) === String(v) ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+  else if (f.type === 'textarea') c = `<textarea id="${id}" rows="4"${req}>${esc(v)}</textarea>`;
+  else c = `<input id="${id}" type="${f.type || 'text'}" value="${esc(v)}"${req}${f.type === 'number' ? ' inputmode="decimal" step="any" min="0"' : ''}${f.pattern ? ` pattern="${f.pattern}" title="${esc(f.hint || '')}"` : ''} placeholder="${esc(f.placeholder || '')}">`;
+  return `<div class="field"><label for="${id}">${esc(f.label)}</label>${c}</div>`;
+}
+function openForm(title, fields, onSubmit, onDelete) {
+  formCtx = { fields, onSubmit, onDelete };
+  openSheet(title, `<form id="the-form" novalidate>${fields.map(fieldHTML).join('')}<p class="small" id="form-err" style="color:var(--crit)" hidden></p><button class="btn primary block" type="submit">Enregistrer</button>${onDelete ? '<button class="btn danger block" type="button" data-act="del">Supprimer</button>' : ''}</form>`);
+}
+document.addEventListener('submit', async e => {
+  e.preventDefault(); if (!formCtx) return;
+  const vals = {}, err = $('#form-err');
+  for (const f of formCtx.fields) {
+    const el = $('#f-' + f.id); let v = f.type === 'checkbox' ? el.checked : el.value.trim();
+    if (f.required && v === '') { err.textContent = 'Renseignez « ' + f.label + ' ».'; err.hidden = false; el.focus(); return; }
+    if (f.pattern && v && !new RegExp('^' + f.pattern + '$').test(v)) { err.textContent = f.hint || 'Format invalide.'; err.hidden = false; el.focus(); return; }
+    if (f.type === 'number') v = num(v);
+    vals[f.id] = v;
+  }
+  const ctx = formCtx; closeSheet(); await ctx.onSubmit(vals);
+});
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
+function copySheet(title, text, extra) {
+  openSheet(title, `<textarea class="copy" id="copy-text" readonly aria-label="${esc(title)}">${esc(text)}</textarea><button class="btn primary block" data-act="copy">Copier le texte</button>${extra || ''}`);
+}
+const byId = (col, id) => S[col].find(d => d.id === id);
+const lotOptions = () => sortedLots().map(l => [l.id, lotName(l) + (l.proprietaire ? ' · ' + l.proprietaire : '')]);
+
+function lotForm(l) {
+  openForm(l ? 'Modifier ' + lotName(l) : 'Nouveau lot', [
+    { id: 'numero', label: 'Numéro du lot', required: true, value: l && l.numero, placeholder: 'ex. 12' },
+    { id: 'bloc', label: 'Immeuble ou bloc (facultatif)', value: l && l.bloc, placeholder: 'ex. A' },
+    { id: 'etage', label: 'Étage (0 pour le rez-de-chaussée)', type: 'number', value: l ? l.etage : 0 },
+    { id: 'proprietaire', label: 'Copropriétaire', value: l && l.proprietaire },
+    { id: 'tel', label: 'Téléphone', type: 'tel', value: l && l.tel },
+    { id: 'cotisation', label: 'Cotisation mensuelle (' + S.cfg.devise + ')', type: 'number', required: true, value: l ? l.cotisation : S.cfg.cotisationDefaut },
+    { id: 'note', label: 'Note', type: 'textarea', value: l && l.note },
+  ], v => save('lots', l, v), l && (async () => { await remove('lots', l.id); }));
+}
+function lotSheet(l) {
+  const P = payIndex(), a = arriere(l, P), ms = months().slice(-12);
+  const pays = S.paiements.filter(p => p.lotId === l.id).sort((x, y) => natural(y.date, x.date));
+  openSheet(lotName(l), `<dl class="kv"><dt>Copropriétaire</dt><dd>${esc(l.proprietaire || 'Non renseigné')}</dd><dt>Téléphone</dt><dd>${l.tel ? `<a href="tel:${esc(l.tel.replace(/[^\d+]/g, ''))}">${esc(l.tel)}</a>` : 'Non renseigné'}</dd><dt>Étage</dt><dd>${etageLabel(l.etage)}</dd><dt>Cotisation</dt><dd class="num">${money(l.cotisation)} / mois</dd><dt>Reste dû</dt><dd class="num" style="font-weight:700;color:var(--${a.t > 0 ? 'crit' : 'ok'})">${a.t > 0 ? money(a.t) : 'À jour'}</dd></dl>
+    ${l.note ? `<p class="note">${esc(l.note)}</p>` : ''}
+    <div class="chips">${ms.map(m => { const s = statut(l, m, P); return `<span class="chip ${s.st}" title="${s.st === 'ok' ? 'Payé' : s.st === 'part' ? 'Partiel' : 'Impayé'}">${esc(monthLabel(m, true))}${s.st === 'ok' ? ' ✓' : ''}</span>`; }).join('')}</div>
+    <div class="btns">${S.admin ? `<button class="btn primary" data-act="pay" data-id="${esc(l.id)}">Encaisser</button>` : ''}${a.t > 0 && S.admin ? `<button class="btn" data-act="relance" data-id="${esc(l.id)}">Message de relance</button>` : ''}${S.admin ? `<button class="btn" data-act="lot-edit" data-id="${esc(l.id)}">Modifier</button>` : ''}</div>
+    <h3>Paiements</h3>${pays.length ? '<ul class="list">' + pays.map(p => `<li><button class="row" data-act="recu" data-id="${esc(p.id)}"><span class="grow"><b>${esc(monthLabel(p.mois))}</b><small>${frDate(p.date)} · ${esc(p.mode || '')}</small></span><span class="amount">${money(p.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="muted">Aucun paiement enregistré.</p>'}`);
+}
+function payForm(lotId, p) {
+  const P = payIndex(), ms = months(), mois = p ? p.mois : ui.tab === 'caisse' ? ui.mois : ms[ms.length - 1];
+  const lot = byId('lots', lotId || (p && p.lotId)) || sortedLots()[0];
+  const opts = [...ms]; let [y, m] = ms[ms.length - 1].split('-').map(Number);
+  for (let k = 0; k < 3; k++) { if (++m > 12) { m = 1; y++; } opts.push(y + '-' + pad(m)); }
+  if (!opts.includes(mois)) opts.unshift(mois);
+  const due = lot ? statut(lot, mois, P).due : 0;
+  openForm(p ? 'Modifier le paiement' : 'Encaisser une cotisation', [
+    { id: 'lotId', label: 'Lot', type: 'select', required: true, options: lotOptions(), value: lot && lot.id },
+    { id: 'mois', label: 'Mois concerné', type: 'select', required: true, options: opts.map(o => [o, monthLabel(o)]), value: mois },
+    { id: 'montant', label: 'Montant (' + S.cfg.devise + ')', type: 'number', required: true, value: p ? p.montant : due || (lot ? lot.cotisation : '') },
+    { id: 'date', label: 'Date du paiement', type: 'date', required: true, value: p ? p.date : today() },
+    { id: 'mode', label: 'Mode de paiement', type: 'select', options: MODES.map(x => [x, x]), value: p ? p.mode : 'Espèces' },
+    { id: 'ref', label: 'Référence (n° de chèque, virement)', value: p && p.ref },
+  ], async v => {
+    const numero = p && p.numero ? p.numero : 'R-' + v.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const id = await save('paiements', p, { ...v, numero });
+    if (id) { toast('Paiement enregistré'); recuSheet({ id, ...v, numero }); }
+  }, p && (async () => { await remove('paiements', p.id); }));
+}
+function recuSheet(p) {
+  const l = byId('lots', p.lotId);
+  const text = `REÇU DE PAIEMENT N° ${p.numero || ''}\n${S.cfg.nom}${S.cfg.adresse ? '\n' + S.cfg.adresse : ''}\n\n${lotName(l)}${l && l.proprietaire ? ' · ' + l.proprietaire : ''}\nPériode : ${monthLabel(p.mois)}\nMontant reçu : ${money(p.montant)}\nMode : ${p.mode || ''}${p.ref ? ' (réf. ' + p.ref + ')' : ''}\nDate : ${frDate(p.date)}\n\nLe syndic`;
+  copySheet('Reçu de paiement', text, S.admin && byId('paiements', p.id) ? `<button class="btn block" data-act="pay-edit" data-id="${esc(p.id)}">Modifier ce paiement</button>` : '');
+}
+function depForm(d) {
+  openForm(d ? 'Modifier la dépense' : 'Nouvelle dépense', [
+    { id: 'libelle', label: 'Libellé', required: true, value: d && d.libelle, placeholder: 'ex. Facture électricité parties communes' },
+    { id: 'categorie', label: 'Poste', type: 'select', options: CATS.map(c => [c, c]), value: d ? d.categorie : 'Entretien' },
+    { id: 'montant', label: 'Montant (' + S.cfg.devise + ')', type: 'number', required: true, value: d && d.montant },
+    { id: 'date', label: 'Date', type: 'date', required: true, value: d ? d.date : today() },
+    { id: 'fournisseur', label: 'Fournisseur ou prestataire', value: d && d.fournisseur },
+    { id: 'note', label: 'Note', type: 'textarea', value: d && d.note },
+  ], v => save('depenses', d, v), d && (async () => { await remove('depenses', d.id); }));
+}
+function depSheet(d) {
+  if (S.admin) return depForm(d);
+  openSheet(d.libelle, `<dl class="kv"><dt>Montant</dt><dd class="num">${money(d.montant)}</dd><dt>Date</dt><dd>${frDate(d.date)}</dd><dt>Poste</dt><dd>${esc(d.categorie || 'Divers')}</dd><dt>Fournisseur</dt><dd>${esc(d.fournisseur || 'Non précisé')}</dd></dl>${d.note ? `<p class="note">${esc(d.note)}</p>` : ''}`);
+}
+function incForm(i) {
+  const f = [
+    { id: 'titre', label: 'Problème constaté', required: true, value: i && i.titre, placeholder: 'ex. Ascenseur bloqué' },
+    { id: 'lieu', label: 'Lieu', value: i && i.lieu, placeholder: 'ex. Hall, 3e étage' },
+    { id: 'description', label: 'Description', type: 'textarea', value: i && i.description },
+    { id: 'priorite', label: 'Priorité', type: 'select', options: [['basse', 'Basse'], ['normale', 'Normale'], ['urgente', 'Urgente']], value: i ? i.priorite : 'normale' },
+  ];
+  if (S.admin) f.push({ id: 'statut', label: 'Statut', type: 'select', options: [['ouvert', 'Ouvert'], ['encours', 'En cours'], ['resolu', 'Résolu']], value: i ? i.statut : 'ouvert' });
+  openForm(i ? 'Modifier l’incident' : 'Signaler un incident', f,
+    async v => { const id = await save('incidents', i, i ? v : { statut: 'ouvert', ...v, date: today(), par: S.uid }); if (id && !i) toast('Incident signalé'); },
+    i && S.admin && (async () => { await remove('incidents', i.id); }));
+}
+function incSheet(i) {
+  const st = i.statut === 'resolu' ? 'Résolu' : i.statut === 'encours' ? 'En cours' : 'Ouvert';
+  openSheet(i.titre, `<dl class="kv"><dt>Statut</dt><dd>${st}</dd><dt>Priorité</dt><dd>${esc(i.priorite || 'normale')}</dd><dt>Lieu</dt><dd>${esc(i.lieu || 'Non précisé')}</dd><dt>Signalé le</dt><dd>${frDate(i.date)}</dd>${i.resoluLe ? `<dt>Résolu le</dt><dd>${frDate(i.resoluLe)}</dd>` : ''}</dl>${i.description ? `<p class="note" style="white-space:pre-line">${esc(i.description)}</p>` : ''}
+    ${S.admin ? `<div class="btns">${i.statut === 'ouvert' || !i.statut ? `<button class="btn primary" data-act="inc-st" data-id="${esc(i.id)}" data-v="encours">Prendre en charge</button>` : ''}${i.statut !== 'resolu' ? `<button class="btn ${i.statut === 'encours' ? 'primary' : ''}" data-act="inc-st" data-id="${esc(i.id)}" data-v="resolu">Marquer résolu</button>` : `<button class="btn" data-act="inc-st" data-id="${esc(i.id)}" data-v="ouvert">Rouvrir</button>`}<button class="btn" data-act="inc-edit" data-id="${esc(i.id)}">Modifier</button></div>` : ''}`);
+}
+function annForm(a) {
+  openForm(a ? 'Modifier l’annonce' : 'Publier une annonce', [
+    { id: 'titre', label: 'Titre', required: true, value: a && a.titre },
+    { id: 'texte', label: 'Message', type: 'textarea', required: true, value: a && a.texte },
+    { id: 'date', label: 'Date', type: 'date', required: true, value: a ? a.date : today() },
+    { id: 'epingle', label: 'Épingler sur l’accueil', type: 'checkbox', value: a && a.epingle },
+  ], v => save('annonces', a, v), a && (async () => { await remove('annonces', a.id); }));
+}
+function cfgForm() {
+  openForm('Réglages de la résidence', [
+    { id: 'nom', label: 'Nom de la résidence', required: true, value: S.cfg.nom },
+    { id: 'adresse', label: 'Adresse', value: S.cfg.adresse },
+    { id: 'devise', label: 'Devise', required: true, value: S.cfg.devise, placeholder: 'DH, €…' },
+    { id: 'debut', label: 'Premier mois de suivi des cotisations', required: true, value: S.cfg.debut, pattern: '\\d{4}-(0[1-9]|1[0-2])', hint: 'Écrivez le mois sous la forme 2026-01.', placeholder: '2026-01' },
+    { id: 'soldeInitial', label: 'Solde de caisse au départ', type: 'number', value: S.cfg.soldeInitial },
+    { id: 'cotisationDefaut', label: 'Cotisation mensuelle proposée pour un nouveau lot', type: 'number', value: S.cfg.cotisationDefaut },
+  ], async v => { if (await saveCfg(v)) toast('Réglages enregistrés'); });
+}
+function relance(l) {
+  const a = arriere(l, payIndex());
+  copySheet('Message de relance', `Bonjour${l.proprietaire ? ' ' + l.proprietaire : ''},\n\nSauf erreur de notre part, les cotisations du ${lotName(l).toLowerCase()} (${S.cfg.nom}) restent dues pour : ${a.ms.map(m => monthLabel(m)).join(', ')}.\nMontant à régler : ${money(a.t)}.\n\nMerci de régulariser dès que possible. Si le paiement a déjà été fait, ne tenez pas compte de ce message.\n\nLe syndic`);
+}
+function csv() {
+  const q = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
+  const rows = [...S.paiements.map(p => [p.date, 'Encaissement', lotName(byId('lots', p.lotId)) + ' · ' + p.mois, num(p.montant)]), ...S.depenses.map(d => [d.date, 'Dépense', d.libelle, -num(d.montant)])].sort((a, b) => natural(a[0], b[0]));
+  copySheet('Journal de caisse', 'Date;Type;Libellé;Montant\n' + rows.map(r => [r[0], r[1], q(r[2]), String(r[3]).replace('.', ',')].join(';')).join('\n'));
+}
+async function purge() {
+  closeSheet(); toast('Suppression des exemples…');
+  for (const c of COLS) for (const d of S[c].filter(x => x.exemple)) { if (!await remove(c, d.id)) return; }
+  toast('Exemples supprimés');
+}
+
+/* ---------- events ---------- */
+const ACTIONS = {
+  close: closeSheet,
+  seg: d => { ui.seg = d.v; render(); },
+  mois: d => { const ms = months(), i = ms.indexOf(ui.mois) + Number(d.d); if (ms[i]) { ui.mois = ms[i]; render(); } },
+  'lot-new': () => lotForm(null),
+  lot: d => { const l = byId('lots', d.id); if (l) lotSheet(l); },
+  'lot-edit': d => lotForm(byId('lots', d.id)),
+  pay: d => payForm(d.id, null),
+  'pay-edit': d => { const p = byId('paiements', d.id); if (p) payForm(null, p); },
+  recu: d => { const p = byId('paiements', d.id); if (p) recuSheet(p); },
+  relance: d => { const l = byId('lots', d.id); if (l) relance(l); },
+  'dep-new': () => depForm(null),
+  dep: d => { const x = byId('depenses', d.id); if (x) depSheet(x); },
+  'inc-new': () => incForm(null),
+  inc: d => { const i = byId('incidents', d.id); if (i) incSheet(i); },
+  'inc-edit': d => incForm(byId('incidents', d.id)),
+  'inc-st': async d => { const i = byId('incidents', d.id); if (!i) return; closeSheet(); await save('incidents', i, { statut: d.v, resoluLe: d.v === 'resolu' ? today() : '' }); },
+  'ann-new': () => annForm(null),
+  ann: d => annForm(byId('annonces', d.id)),
+  cfg: cfgForm, csv,
+  purge: () => openSheet('Supprimer les exemples', '<p>Les lots, paiements, dépenses, incidents et annonces marqués comme exemples seront supprimés. Vos propres saisies sont conservées.</p><div class="btns"><button class="btn danger" data-act="purge-go">Supprimer les exemples</button><button class="btn" data-act="close">Annuler</button></div>'),
+  'purge-go': purge,
+  del: async (d, el) => {
+    if (!el.dataset.armed) { el.dataset.armed = '1'; el.textContent = 'Confirmer la suppression'; return; }
+    const ctx = formCtx; closeSheet(); if (ctx && ctx.onDelete) await ctx.onDelete();
+  },
+  copy: async () => {
+    const t = $('#copy-text'); if (!t) return;
+    try { await navigator.clipboard.writeText(t.value); toast('Texte copié'); }
+    catch (e) { t.focus(); t.select(); toast('Copie bloquée : le texte est sélectionné, copiez-le à la main.'); }
+  },
+};
+document.addEventListener('click', e => {
+  if (e.target.id === 'scrim') return closeSheet();
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const fn = ACTIONS[el.dataset.act]; if (fn) fn(el.dataset, el);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#scrim').hidden) closeSheet(); });
+document.addEventListener('input', e => {
+  if (e.target.id !== 'lot-search') return;
+  const q = e.target.value.trim().toLowerCase();
+  document.querySelectorAll('#lot-list li').forEach(li => li.hidden = !!q && !li.dataset.q.includes(q));
+});
+window.addEventListener('hashchange', () => { route(); render(); $('#view').scrollTop = 0; });
+boot();
+</script>
+</body>
+</html>
