@@ -761,28 +761,32 @@ function soldeForm() {
       $('#solde-detail').innerHTML = soldeDetail(num(si.value));
     } });
 }
-function repartData(l) {
+function repartData(l, from) {
   const D = dettes().get(l.id) || { avance: 0 };
   const remb = sumOf(S.remboursements.filter(r => r.lotId === l.id), r => r.montant), comps = S.paiements.filter(p => isComp(p) && p.lotId === l.id);
   const dispo = Math.round((D.avance - remb) * 100) / 100, cash = new Map(), cur = new Map();
   S.paiements.filter(p => !isComp(p) && p.lotId === l.id).forEach(p => cash.set(p.mois, (cash.get(p.mois) || 0) + num(p.montant)));
   comps.forEach(p => cur.set(p.mois, (cur.get(p.mois) || 0) + num(p.montant)));
-  let start = debut(); comps.forEach(p => { if (p.mois < start) start = p.mois; });
+  let first = debut(); comps.forEach(p => { if (p.mois < first) first = p.mois; });
+  from = from || first;
   const rows = [];
-  for (let m = start; m <= shift(thisMonth(), 12); m = shift(m, 1)) {
+  for (let m = from < first ? from : first; m <= shift(thisMonth(), 12); m = shift(m, 1)) {
     const pc = cash.get(m) || 0, ec = Math.round((cur.get(m) || 0) * 100) / 100, max = Math.max(ec, Math.round((num(l.cotisation) - pc) * 100) / 100);
-    if (max > 0.004) rows.push({ m, pc, ec, max });
+    if ((m >= from && max > 0.004) || ec > 0) rows.push({ m, pc, ec, max });
   }
-  return { dispo, comps, rows };
+  return { dispo, comps, rows, from };
 }
-function repartSheet(l) {
-  const { dispo, rows } = repartData(l);
+let repLot = null;
+function repartSheet(l, from, keep) {
+  const { dispo, rows } = repartData(l, from); from = repartData(l, from).from; repLot = l.id;
+  const fo = []; for (let m = shift(debut(), -36); m <= thisMonth(); m = shift(m, 1)) fo.push(m); if (!fo.includes(from)) { fo.push(from); fo.sort(); }
   if (dispo <= 0.004) { toast('Ce copropriétaire n’a pas d’avance à répartir.'); return; }
   openSheet('Répartir l’avance', `<p><b>${esc(lotName(l))}</b>${l.proprietaire ? ' · ' + esc(l.proprietaire) : ''}</p>
     <p class="small muted">Indiquez, pour chaque mois, la part de son avance de frais qui règle sa cotisation. Ce qui n’est pas réparti reste à lui rendre.</p>
+    <div class="field"><label for="rep-from">À partir du mois</label><select id="rep-from" class="search">${fo.map(m => `<option value="${m}"${m === from ? ' selected' : ''}>${esc(monthLabel(m))}${m === debut() ? ' (début du suivi)' : ''}</option>`).join('')}</select></div>
     <div class="card" id="rep-sum" data-dispo="${dispo}"></div>
     <div class="btns"><button class="btn sm" data-act="rep-auto">Remplir du plus ancien au plus récent</button><button class="btn sm" data-act="rep-zero">Tout mettre à zéro</button></div>
-    <ul class="list">${rows.map(r => `<li><label class="row" for="rep-${r.m}"><span class="grow"><b style="text-transform:capitalize">${esc(monthLabel(r.m))}</b><small>${r.pc > 0 ? 'Déjà payé ' + money(r.pc) + ' · ' : ''}reste ${money(r.max)}${phase(r.m) === 'futur' ? ' · à venir' : ''}</small></span></label><span class="side"><input class="rep-in" id="rep-${r.m}" data-m="${r.m}" data-max="${r.max}" type="number" inputmode="decimal" min="0" step="any" value="${r.ec || ''}" placeholder="0" aria-label="Part de l’avance pour ${esc(monthLabel(r.m))}"></span></li>`).join('')}</ul>
+    <ul class="list">${rows.map(r => `<li><label class="row" for="rep-${r.m}"><span class="grow"><b style="text-transform:capitalize">${esc(monthLabel(r.m))}</b><small>${r.pc > 0 ? 'Déjà payé ' + money(r.pc) + ' · ' : ''}reste ${money(r.max)}${phase(r.m) === 'futur' ? ' · à venir' : phase(r.m) === 'avant' ? ' · avant le début du suivi' : ''}</small></span></label><span class="side"><input class="rep-in" id="rep-${r.m}" data-m="${r.m}" data-max="${r.max}" type="number" inputmode="decimal" min="0" step="any" value="${keep && r.m in keep ? keep[r.m] : (r.ec || '')}" placeholder="0" aria-label="Part de l’avance pour ${esc(monthLabel(r.m))}"></span></li>`).join('')}</ul>
     <p class="small" id="rep-err" style="color:var(--crit)" hidden></p>
     <button class="btn primary block" data-act="rep-save" data-id="${esc(l.id)}">Enregistrer la répartition</button>`);
   repTotals();
@@ -951,7 +955,8 @@ document.addEventListener('change', e => {
   };
   r.readAsText(e.target.files[0]);
 });
-document.addEventListener('change', e => { const k = { 'depuis-sel': 'depuis', 'jusqua-sel': 'jusqua' }[e.target.id]; if (k) { ui[k] = e.target.value; const id = e.target.id; render(); const el = $('#' + id); if (el) el.focus(); } });
+document.addEventListener('change', e => { if (e.target.id === 'rep-from') { const l = byId('lots', repLot); if (!l) return; const keep = {}; document.querySelectorAll('.rep-in').forEach(i => keep[i.dataset.m] = i.value); repartSheet(l, e.target.value, keep); const el = $('#rep-from'); if (el) el.focus(); return; }
+  const k = { 'depuis-sel': 'depuis', 'jusqua-sel': 'jusqua' }[e.target.id]; if (k) { ui[k] = e.target.value; const id = e.target.id; render(); const el = $('#' + id); if (el) el.focus(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#scrim').hidden) closeSheet(); });
 document.addEventListener('input', e => {
   if (e.target.classList && e.target.classList.contains('rep-in')) { repTotals(); return; }
