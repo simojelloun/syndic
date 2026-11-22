@@ -124,13 +124,14 @@ p{margin:0}
 .note{background:var(--accent-soft);border-radius:12px;padding:10px 14px;font-size:14px}
 .note.warn{background:color-mix(in srgb,var(--warn) 16%,var(--surface))}
 .empty{text-align:center;color:var(--muted);padding:22px 14px;background:var(--surface);border:1px dashed var(--line);border-radius:var(--r);display:flex;flex-direction:column;gap:10px;align-items:center}
-.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
 .seg button{border:0;background:none;border-radius:9px;padding:9px;font-weight:600;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .month{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .month b{font:700 18px var(--display);text-transform:capitalize}
 .month>button{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px}
 .month>button:disabled{opacity:.35;cursor:default}
+.side .btns{flex-wrap:nowrap}
 .month .mid{display:flex;flex-direction:column;align-items:center;gap:1px;text-align:center}
 .link{border:0;background:none;color:var(--accent);font-weight:600;padding:2px 4px;font-size:13.5px;text-decoration:underline;text-underline-offset:2px}
 .cal{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -161,6 +162,7 @@ p{margin:0}
 #sheet-body{display:flex;flex-direction:column;gap:14px}
 form{display:flex;flex-direction:column;gap:12px}
 .field{display:flex;flex-direction:column;gap:4px}
+.field[hidden]{display:none}
 .field label{font-size:13.5px;font-weight:600;color:var(--muted)}
 .field input,.field select,.field textarea{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface2)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -214,7 +216,7 @@ const shift = (m, d) => { let [y, mo] = m.split('-').map(Number); mo += d; y += 
 const natural = (a, b) => String(a).localeCompare(String(b), 'fr', { numeric: true });
 
 /* ---------- state ---------- */
-const COLS = ['lots', 'paiements', 'depenses', 'incidents', 'annonces'];
+const COLS = ['lots', 'paiements', 'depenses', 'remboursements', 'incidents', 'annonces'];
 const DEFCFG = { nom: 'Ma résidence', adresse: '', devise: 'DH', debut: thisMonth(), soldeInitial: 0, cotisationDefaut: 200 };
 const S = { mode: 'loading', cfg: { ...DEFCFG }, admin: true, report: true, uid: null, stale: false, got: new Set() };
 COLS.forEach(c => S[c] = []);
@@ -323,7 +325,28 @@ function arriere(lot, P) { let t = 0; const ms = []; for (const m of months()) {
 const sortedLots = () => [...S.lots].sort((a, b) => natural(a.bloc || '', b.bloc || '') || num(a.etage) - num(b.etage) || natural(a.numero, b.numero));
 const lotName = l => l ? 'Lot ' + l.numero + (l.bloc ? ' (' + l.bloc + ')' : '') : 'Lot supprimé';
 const sumOf = (arr, f) => arr.reduce((t, x) => t + num(f(x)), 0);
-const caisse = () => num(S.cfg.soldeInitial) + sumOf(S.paiements, p => p.montant) - sumOf(S.depenses, d => d.montant);
+const isPaid = d => d.statut !== 'a_payer';
+const paidBy = d => d.payeur === 'lot' ? 'lot' : 'caisse';
+const payDate = d => d.payeLe || d.date || '';
+const isComp = p => p.mode === 'Compensation';
+const caisse = () => num(S.cfg.soldeInitial) + sumOf(S.paiements.filter(p => !isComp(p)), p => p.montant)
+  - sumOf(S.depenses.filter(d => isPaid(d) && paidBy(d) === 'caisse'), d => d.montant) - sumOf(S.remboursements, r => r.montant);
+const aPayer = () => S.depenses.filter(d => !isPaid(d)).sort((a, b) => natural(a.echeance || '9999', b.echeance || '9999') || natural(a.date, b.date));
+const inDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const urgence = d => !d.echeance ? 'basse' : d.echeance < today() ? 'urgente' : d.echeance <= inDays(7) ? 'normale' : 'basse';
+function echeancePill(d) {
+  const u = urgence(d);
+  return d.echeance ? `<span class="pill ${u === 'urgente' ? 'crit' : u === 'normale' ? 'warn' : 'neutral'}">${u === 'urgente' ? 'En retard' : 'Avant le ' + frDate(d.echeance).slice(0, 5)}</span>` : '<span class="pill neutral">À payer</span>';
+}
+function dettes() {
+  const M = new Map(), get = id => { if (!M.has(id)) M.set(id, { avance: 0, rendu: 0, du: 0 }); return M.get(id); };
+  S.depenses.filter(d => isPaid(d) && paidBy(d) === 'lot' && d.payeurLot).forEach(d => get(d.payeurLot).avance += num(d.montant));
+  S.remboursements.forEach(r => get(r.lotId).rendu += num(r.montant));
+  S.paiements.filter(isComp).forEach(p => get(p.lotId).rendu += num(p.montant));
+  M.forEach(v => v.du = Math.max(0, Math.round((v.avance - v.rendu) * 100) / 100));
+  return M;
+}
+const duA = id => { const v = dettes().get(id); return v ? v.du : 0; };
 
 /* ---------- rendering ---------- */
 let raf = 0;
@@ -350,7 +373,7 @@ function render() {
 }
 const FABS = {
   lots: () => S.admin && ['+ Lot', 'lot-new'],
-  caisse: () => S.admin && (ui.seg === 'depenses' ? ['+ Dépense', 'dep-new'] : S.lots.length ? ['+ Encaissement', 'pay'] : null),
+  caisse: () => S.admin && (ui.seg === 'depenses' ? ['+ Facture', 'dep-new'] : ui.seg === 'avances' ? null : S.lots.length ? ['+ Encaissement', 'pay'] : null),
   incidents: () => S.report && ['+ Signaler', 'inc-new'],
 };
 function facade(mois, P) {
@@ -363,24 +386,44 @@ function facade(mois, P) {
         '</div></div>').join('');
   }).join('') + '</div>';
 }
+function avancesView() {
+  const D = dettes(), rows = sortedLots().filter(l => D.has(l.id)), tot = sumOf(rows, l => D.get(l.id).du);
+  const lot = id => lotName(byId('lots', id));
+  const mv = [
+    ...S.depenses.filter(d => isPaid(d) && paidBy(d) === 'lot').map(d => ({ date: payDate(d), t: 'Avance', lib: d.libelle + ' · ' + lot(d.payeurLot), v: num(d.montant), act: 'dep', id: d.id })),
+    ...S.remboursements.map(r => ({ date: r.date, t: 'Rendu', lib: 'Remboursement ' + (r.mode || '').toLowerCase() + ' · ' + lot(r.lotId), v: -num(r.montant), act: 'remb', id: r.id })),
+    ...S.paiements.filter(isComp).map(p => ({ date: p.date, t: 'Rendu', lib: 'Déduit de la cotisation de ' + monthLabel(p.mois) + ' · ' + lot(p.lotId), v: -num(p.montant), act: 'recu', id: p.id })),
+  ].sort((a, b) => natural(b.date, a.date));
+  return `<div class="tiles"><div class="tile wide ${tot > 0 ? 'crit' : ''}"><span>Le syndic doit aux copropriétaires</span><b>${money(tot)}</b></div></div>
+    <p class="note small">Quand un copropriétaire paie une facture de la résidence de sa poche, le syndic lui doit ce montant. On le lui rend en argent (cela sort de la caisse) ou en le déduisant de ses cotisations.</p>
+    <section class="sec"><h3>Par copropriétaire</h3>${rows.length ? '<ul class="list">' + rows.map(l => { const v = D.get(l.id);
+      return `<li><button class="row" data-act="lot" data-id="${esc(l.id)}"><span class="badge">${esc(l.numero)}</span><span class="grow"><b>${esc(l.proprietaire || lotName(l))}</b><small>Avancé ${money(v.avance)} · rendu ${money(v.rendu)}</small></span>${v.du > 0 && S.admin ? '' : v.du > 0 ? `<span class="amount" style="color:var(--warn)">${money(v.du)}</span>` : '<span class="pill ok">Soldé</span>'}</button>${v.du > 0 && S.admin ? `<span class="side"><button class="btn sm primary" data-act="regler" data-id="${esc(l.id)}">Rendre ${money(v.du)}</button></span>` : ''}</li>`; }).join('') + '</ul>' : '<p class="empty">Aucun copropriétaire n’a avancé de frais.</p>'}</section>
+    ${mv.length ? `<section class="sec"><h3>Mouvements</h3><ul class="list">${mv.map(x => `<li><button class="row" data-act="${x.act}" data-id="${esc(x.id)}"><span class="grow"><b>${esc(x.t === 'Avance' ? 'Avance de frais' : 'Avance rendue')}</b><small>${frDate(x.date)} · ${esc(x.lib)}</small></span><span class="amount" style="color:var(--${x.v > 0 ? 'warn' : 'ok'})">${x.v > 0 ? '+' : '−'} ${money(Math.abs(x.v))}</span></button></li>`).join('')}</ul></section>` : ''}`;
+}
 const VIEWS = {
   accueil() {
     if (!S.lots.length) return `<div class="empty"><h2>Bienvenue</h2><p>${S.admin ? 'Renseignez la résidence, puis ajoutez les lots pour suivre les cotisations.' : 'Le syndic n’a pas encore renseigné les lots.'}</p>${S.admin ? '<div class="btns"><button class="btn" data-act="cfg">Renseigner la résidence</button><button class="btn primary" data-act="lot-new">Ajouter un lot</button></div>' : ''}</div>`;
     const P = payIndex(), m = ui.mois, ph = phase(m), lots = sortedLots(), n = lots.length;
     const ok = lots.filter(l => statut(l, m, P).st === 'ok').length, pct = Math.round(ok / lots.length * 100);
     const arr = lots.map(l => ({ l, a: arriere(l, P) })).filter(x => x.a.t > 0).sort((x, y) => y.a.t - x.a.t);
-    const impayes = sumOf(arr, x => x.a.t), depMois = sumOf(S.depenses.filter(d => (d.date || '').startsWith(m)), d => d.montant);
+    const impayes = sumOf(arr, x => x.a.t), depMois = sumOf(S.depenses.filter(d => isPaid(d) && payDate(d).startsWith(m)), d => d.montant);
+    const bills = aPayer(), totAP = sumOf(bills, d => d.montant), late = bills.some(d => urgence(d) === 'urgente'), D = dettes();
+    const owed = lots.filter(l => D.has(l.id) && D.get(l.id).du > 0).map(l => ({ l, du: D.get(l.id).du })).sort((x, y) => y.du - x.du), totDu = sumOf(owed, x => x.du);
     const open = S.incidents.filter(i => i.statut !== 'resolu').sort((a, b) => (b.priorite === 'urgente') - (a.priorite === 'urgente') || natural(b.date, a.date));
     const pin = S.annonces.filter(a => a.epingle).sort((a, b) => natural(b.date, a.date))[0];
     const hasEx = COLS.some(c => S[c].some(d => d.exemple));
     let todo = '';
     open.slice(0, 3).forEach(i => todo += `<li><span class="stripe ${esc(i.priorite || 'normale')}"></span><button class="row" data-act="inc" data-id="${esc(i.id)}"><span class="grow"><b>${esc(i.titre)}</b><small>Incident · ${esc(i.lieu || 'lieu non précisé')}</small></span><span class="pill ${i.statut === 'encours' ? 'warn' : 'crit'}">${i.statut === 'encours' ? 'En cours' : 'Ouvert'}</span></button></li>`);
+    bills.slice(0, 3).forEach(d => todo += `<li><span class="stripe ${urgence(d)}"></span><button class="row" data-act="dep" data-id="${esc(d.id)}"><span class="grow"><b>${esc(d.libelle)}</b><small>Facture à payer · ${d.echeance ? 'échéance ' + frDate(d.echeance) : 'sans échéance'}</small></span><span class="amount">${money(d.montant)}</span></button></li>`);
+    owed.slice(0, 2).forEach(x => todo += `<li><button class="row" data-act="lot" data-id="${esc(x.l.id)}"><span class="badge">${esc(x.l.numero)}</span><span class="grow"><b>${esc(x.l.proprietaire || lotName(x.l))}</b><small>Frais avancés, à lui rendre</small></span><span class="amount" style="color:var(--warn)">${money(x.du)}</span></button></li>`);
     arr.slice(0, 3).forEach(x => todo += `<li><button class="row" data-act="lot" data-id="${esc(x.l.id)}"><span class="badge">${esc(x.l.numero)}</span><span class="grow"><b>${esc(x.l.proprietaire || lotName(x.l))}</b><small>${x.a.ms.length} mois en retard</small></span><span class="amount" style="color:var(--crit)">${money(x.a.t)}</span></button></li>`);
     return (hasEx ? `<p class="note">Données d’exemple affichées. ${S.admin ? 'Supprimez-les depuis Résidence, Réglages.' : ''}</p>` : '') +
       monthBar() + `<section class="hero"><div class="hero-top"><div><p class="eyebrow">Cotisations · ${esc(monthLabel(m))}</p><p class="big">${ok} lot${ok > 1 ? 's' : ''} sur ${n} ${ph === 'futur' ? (ok > 1 ? 'payés' : 'payé') + ' d’avance' : ph === 'avant' ? (ok > 1 ? 'ont payé' : 'a payé') : 'à jour'}</p></div><div class="pct">${pct} %</div></div>${facade(m, P)}${legendHTML(ph)}</section>
       <div class="tiles"><div class="tile wide"><span>Solde de caisse</span><b>${money(caisse())}</b></div>
       <div class="tile ${impayes > 0 ? 'crit' : ''}"><span>Impayés cumulés</span><b>${money(impayes)}</b></div>
-      <div class="tile"><span>Dépenses · ${esc(monthLabel(m, true))}</span><b>${money(depMois)}</b></div></div>
+      <div class="tile"><span>Dépenses · ${esc(monthLabel(m, true))}</span><b>${money(depMois)}</b></div>
+      <div class="tile ${late ? 'crit' : ''}"><span>Factures à payer</span><b>${money(totAP)}</b></div>
+      <div class="tile"><span>Dû aux copropriétaires</span><b>${money(totDu)}</b></div></div>
       <section class="sec"><h3>À traiter</h3>${todo ? '<ul class="list">' + todo + '</ul>' : '<p class="empty">Rien à traiter pour le moment.</p>'}</section>` +
       (pin ? `<section class="sec"><h3>Annonce épinglée</h3><div class="card"><h2>${esc(pin.titre)}</h2><p>${esc(pin.texte)}</p><span class="small muted">${frDate(pin.date)}</span></div></section>` : '');
   },
@@ -392,14 +435,19 @@ const VIEWS = {
         return `<li data-q="${esc((l.numero + ' ' + (l.proprietaire || '') + ' ' + (l.bloc || '')).toLowerCase())}"><button class="row" data-act="lot" data-id="${esc(l.id)}"><span class="badge">${esc(l.numero)}</span><span class="grow"><b>${esc(l.proprietaire || 'Copropriétaire non renseigné')}</b><small>${l.bloc ? 'Immeuble ' + esc(l.bloc) + ' · ' : ''}${etageLabel(l.etage)} · ${money(l.cotisation)} / mois</small></span><span class="pill ${a.t > 0 ? 'crit' : 'ok'}">${a.t > 0 ? 'Doit ' + money(a.t) : 'À jour'}</span></button></li>`; }).join('') + '</ul>';
   },
   caisse() {
-    const seg = `<div class="seg"><button data-act="seg" data-v="cotisations" aria-pressed="${ui.seg === 'cotisations'}">Cotisations</button><button data-act="seg" data-v="depenses" aria-pressed="${ui.seg === 'depenses'}">Dépenses</button></div>`;
+    const seg = `<div class="seg"><button data-act="seg" data-v="cotisations" aria-pressed="${ui.seg === 'cotisations'}">Cotisations</button><button data-act="seg" data-v="depenses" aria-pressed="${ui.seg === 'depenses'}">Dépenses</button><button data-act="seg" data-v="avances" aria-pressed="${ui.seg === 'avances'}">Avances</button></div>`;
+    if (ui.seg === 'avances') return seg + avancesView();
     if (ui.seg === 'depenses') {
-      const m = ui.mois, deps = S.depenses.filter(d => (d.date || '').startsWith(m)).sort((a, b) => natural(b.date, a.date)), total = sumOf(S.depenses, d => d.montant);
+      const m = ui.mois, deps = S.depenses.filter(d => isPaid(d) && payDate(d).startsWith(m)).sort((a, b) => natural(payDate(b), payDate(a)));
+      const bills = aPayer(), late = bills.some(d => urgence(d) === 'urgente');
       const byCat = {}; deps.forEach(d => byCat[d.categorie || 'Divers'] = (byCat[d.categorie || 'Divers'] || 0) + num(d.montant));
       const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]), max = cats.length ? cats[0][1] : 1;
-      return seg + monthBar() + `<div class="tiles"><div class="tile"><span>Dépenses · ${esc(monthLabel(m, true))}</span><b>${money(sumOf(deps, d => d.montant))}</b></div><div class="tile"><span>Total enregistré</span><b>${money(total)}</b></div></div>` +
+      const qui = d => paidBy(d) === 'lot' ? 'Avancée par ' + lotName(byId('lots', d.payeurLot)) : 'Caisse';
+      return seg + `<section class="sec"><div class="sec-head"><h3>Factures à payer (${bills.length})</h3>${bills.length ? `<b class="num" style="color:var(--${late ? 'crit' : 'ink'})">${money(sumOf(bills, d => d.montant))}</b>` : ''}</div>` +
+        (bills.length ? '<ul class="list">' + bills.map(d => `<li><span class="stripe ${urgence(d)}"></span><button class="row" data-act="dep" data-id="${esc(d.id)}"><span class="grow"><b>${esc(d.libelle)}</b><small>${money(d.montant)} · ${d.echeance ? (urgence(d) === 'urgente' ? 'en retard, échéance ' : 'avant le ') + frDate(d.echeance) : 'sans échéance'}</small></span>${S.admin ? '' : echeancePill(d)}</button>${S.admin ? `<span class="side"><button class="btn sm primary" data-act="dep-pay" data-id="${esc(d.id)}">Payer</button></span>` : ''}</li>`).join('') + '</ul>' : '<p class="empty">Aucune facture en attente.</p>') + '</section>' +
+        monthBar() + `<div class="tiles"><div class="tile wide"><span>Payé en ${esc(monthLabel(m))}</span><b>${money(sumOf(deps, d => d.montant))}</b></div></div>` +
         (cats.length ? `<section class="sec"><h3>Par poste</h3><div class="card">${cats.map(([c, v]) => `<div class="cat"><span>${esc(c)}</span><div class="bar"><i style="width:${Math.max(3, v / max * 100)}%"></i></div><span class="num">${money(v)}</span></div>`).join('')}</div></section>` : '') +
-        `<section class="sec"><h3>Dépenses du mois</h3>${deps.length ? '<ul class="list">' + deps.map(d => `<li><button class="row" data-act="dep" data-id="${esc(d.id)}"><span class="grow"><b>${esc(d.libelle)}</b><small>${frDate(d.date)} · ${esc(d.categorie || 'Divers')}${d.fournisseur ? ' · ' + esc(d.fournisseur) : ''}</small></span><span class="amount">${money(d.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="empty">Aucune dépense ce mois-ci.</p>'}</section>`;
+        `<section class="sec"><h3>Dépenses payées ce mois</h3>${deps.length ? '<ul class="list">' + deps.map(d => `<li><button class="row" data-act="dep" data-id="${esc(d.id)}"><span class="grow"><b>${esc(d.libelle)}</b><small>${frDate(payDate(d))} · ${esc(d.categorie || 'Divers')} · ${esc(qui(d))}</small></span><span class="amount">${money(d.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="empty">Aucune dépense payée ce mois-ci.</p>'}</section>`;
     }
     if (!S.lots.length) return seg + '<p class="empty">Ajoutez d’abord les lots pour suivre les cotisations.</p>';
     const P = payIndex(), lots = sortedLots();
@@ -442,7 +490,7 @@ function fieldHTML(f) {
   if (f.type === 'select') c = `<select id="${id}"${req}>${f.options.map(o => `<option value="${esc(o[0])}"${String(o[0]) === String(v) ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
   else if (f.type === 'textarea') c = `<textarea id="${id}" rows="4"${req}>${esc(v)}</textarea>`;
   else c = `<input id="${id}" type="${f.type || 'text'}" value="${esc(v)}"${req}${f.type === 'number' ? ' inputmode="decimal" step="any" min="0"' : ''}${f.pattern ? ` pattern="${f.pattern}" title="${esc(f.hint || '')}"` : ''} placeholder="${esc(f.placeholder || '')}">`;
-  return `<div class="field"><label for="${id}">${esc(f.label)}</label>${c}</div>`;
+  return `<div class="field" data-f="${esc(f.id)}"><label for="${id}">${esc(f.label)}</label>${c}</div>`;
 }
 function openForm(title, fields, onSubmit, onDelete, opts) {
   opts = opts || {};
@@ -495,6 +543,7 @@ function lotSheet(l, year) {
   }).join('');
   openSheet(lotName(l), `<dl class="kv"><dt>Copropriétaire</dt><dd>${esc(l.proprietaire || 'Non renseigné')}</dd><dt>Téléphone</dt><dd>${l.tel ? `<a href="tel:${esc(l.tel.replace(/[^\d+]/g, ''))}">${esc(l.tel)}</a>` : 'Non renseigné'}</dd><dt>Étage</dt><dd>${etageLabel(l.etage)}</dd><dt>Cotisation</dt><dd class="num">${money(l.cotisation)} / mois</dd><dt>Reste dû</dt><dd class="num" style="font-weight:700;color:var(--${a.t > 0 ? 'crit' : 'ok'})">${a.t > 0 ? money(a.t) : 'À jour'}</dd></dl>
     ${l.note ? `<p class="note">${esc(l.note)}</p>` : ''}
+    ${duA(l.id) > 0 ? `<div class="note warn"><p>Le syndic doit <b>${money(duA(l.id))}</b> à ce copropriétaire pour des frais avancés.</p>${S.admin ? `<div class="btns" style="margin-top:8px"><button class="btn sm primary" data-act="regler" data-id="${esc(l.id)}">Rendre l’avance</button></div>` : ''}</div>` : ''}
     <div class="sec-head"><h3>Cotisations ${lotYear}</h3><div class="btns"><button class="btn sm" data-act="lot-year" data-id="${esc(l.id)}" data-d="-1">‹ ${lotYear - 1}</button><button class="btn sm" data-act="lot-year" data-id="${esc(l.id)}" data-d="1">${lotYear + 1} ›</button></div></div>
     <div class="cal">${cal}</div>
     ${S.admin ? '<p class="small muted">Touchez un mois pour l’encaisser, qu’il soit passé ou à venir.</p>' : ''}
@@ -555,22 +604,82 @@ function recuSheet(p, list) {
   const l = byId('lots', p.lotId), total = sumOf(rows, x => x.montant);
   const suite = rows.every((x, k) => !k || x.mois === shift(rows[k - 1].mois, 1));
   const periode = rows.length === 1 ? monthLabel(rows[0].mois) : suite ? `de ${monthLabel(rows[0].mois)} à ${monthLabel(rows[rows.length - 1].mois)} (${rows.length} mois)` : rows.map(x => monthLabel(x.mois)).join(', ');
-  const text = `REÇU DE PAIEMENT N° ${p.numero || ''}\n${S.cfg.nom}${S.cfg.adresse ? '\n' + S.cfg.adresse : ''}\n\n${lotName(l)}${l && l.proprietaire ? ' · ' + l.proprietaire : ''}\nPériode : ${periode}\nMontant reçu : ${money(total)}\nMode : ${p.mode || ''}${p.ref ? ' (réf. ' + p.ref + ')' : ''}\nDate : ${frDate(p.date)}\n\nLe syndic`;
+  const text = `REÇU DE PAIEMENT N° ${p.numero || ''}\n${S.cfg.nom}${S.cfg.adresse ? '\n' + S.cfg.adresse : ''}\n\n${lotName(l)}${l && l.proprietaire ? ' · ' + l.proprietaire : ''}\nPériode : ${periode}\nMontant reçu : ${money(total)}\nMode : ${isComp(p) ? 'Déduction des frais avancés par le copropriétaire' : p.mode || ''}${p.ref ? ' (réf. ' + p.ref + ')' : ''}\nDate : ${frDate(p.date)}\n\nLe syndic`;
   copySheet('Reçu de paiement', text, S.admin && byId('paiements', p.id) ? `<button class="btn block" data-act="pay-edit" data-id="${esc(p.id)}">${rows.length > 1 ? 'Modifier le paiement de ' + esc(monthLabel(p.mois)) : 'Modifier ce paiement'}</button>` : '');
 }
+const showF = (id, on) => { const w = document.querySelector('[data-f="' + id + '"]'); if (w) w.hidden = !on; };
 function depForm(d) {
-  openForm(d ? 'Modifier la dépense' : 'Nouvelle dépense', [
+  const etat = d ? (!isPaid(d) ? 'a_payer' : paidBy(d) === 'lot' ? 'lot' : 'caisse') : 'caisse';
+  const defDate = ui.mois === thisMonth() ? today() : ui.mois + '-01';
+  openForm(d ? 'Modifier la facture' : 'Nouvelle facture ou dépense', [
     { id: 'libelle', label: 'Libellé', required: true, value: d && d.libelle, placeholder: 'ex. Facture électricité parties communes' },
     { id: 'categorie', label: 'Poste', type: 'select', options: CATS.map(c => [c, c]), value: d ? d.categorie : 'Entretien' },
     { id: 'montant', label: 'Montant (' + S.cfg.devise + ')', type: 'number', required: true, value: d && d.montant },
-    { id: 'date', label: 'Date', type: 'date', required: true, value: d ? d.date : (ui.mois === thisMonth() ? today() : ui.mois + '-01') },
+    { id: 'date', label: 'Date de la facture', type: 'date', required: true, value: d ? d.date : defDate },
     { id: 'fournisseur', label: 'Fournisseur ou prestataire', value: d && d.fournisseur },
+    { id: 'etat', label: 'Paiement', type: 'select', options: [['caisse', 'Payée par la caisse'], ['lot', 'Payée par un copropriétaire (à lui rendre)'], ['a_payer', 'Pas encore payée']], value: etat },
+    { id: 'payeurLot', label: 'Copropriétaire qui a payé', type: 'select', options: lotOptions(), value: d && d.payeurLot },
+    { id: 'payeLe', label: 'Payée le', type: 'date', value: d ? (d.payeLe || d.date) : defDate },
+    { id: 'echeance', label: 'À payer avant le (facultatif)', type: 'date', value: d && d.echeance },
     { id: 'note', label: 'Note', type: 'textarea', value: d && d.note },
-  ], v => save('depenses', d, v), d && (async () => { await remove('depenses', d.id); }));
+  ], v => { const e = v.etat; delete v.etat;
+    return save('depenses', d, { ...v, statut: e === 'a_payer' ? 'a_payer' : 'payee', payeur: e === 'lot' ? 'lot' : 'caisse', payeurLot: e === 'lot' ? v.payeurLot : '', payeLe: e === 'a_payer' ? '' : (v.payeLe || v.date), echeance: e === 'a_payer' ? v.echeance : (d && d.echeance) || '' });
+  }, d && (async () => { await remove('depenses', d.id); }), { onInput: () => {
+    const e = $('#f-etat').value; showF('payeurLot', e === 'lot'); showF('payeLe', e !== 'a_payer'); showF('echeance', e === 'a_payer');
+  } });
+}
+function payBillForm(d) {
+  openForm('Payer : ' + d.libelle, [
+    { id: 'payeur', label: 'Qui paie ?', type: 'select', options: [['caisse', 'La caisse du syndic'], ['lot', 'Un copropriétaire (à lui rendre)']], value: 'caisse' },
+    { id: 'payeurLot', label: 'Copropriétaire qui a payé', type: 'select', options: lotOptions() },
+    { id: 'montant', label: 'Montant payé (' + S.cfg.devise + ')', type: 'number', required: true, value: d.montant },
+    { id: 'payeLe', label: 'Date du paiement', type: 'date', required: true, value: today() },
+  ], async v => {
+    if (await save('depenses', d, { statut: 'payee', payeur: v.payeur, payeurLot: v.payeur === 'lot' ? v.payeurLot : '', montant: v.montant, payeLe: v.payeLe }))
+      toast(v.payeur === 'lot' ? 'Facture payée. Le montant est à rendre au copropriétaire.' : 'Facture payée par la caisse');
+  }, null, { extra: '<p class="note small" id="bill-hint"></p>', onInput: () => {
+    const lot = $('#f-payeur').value === 'lot', h = $('#bill-hint'), mt = num($('#f-montant').value); showF('payeurLot', lot);
+    h.textContent = lot ? 'Le syndic devra ' + money(mt) + ' à ' + lotName(byId('lots', $('#f-payeurLot').value)) + '. Vous le retrouverez dans Caisse, Avances.' : 'Solde de caisse après paiement : ' + money(caisse() - mt) + '.';
+  } });
+}
+function planComp(l, montant) {
+  const Q = payIndex(), a = arriere(l, Q), out = []; let rest = montant, m = a.ms.length ? a.ms[0] : thisMonth();
+  for (let k = 0; k < 120 && rest > 0.004; k++, m = shift(m, 1)) { const s = statut(l, m, Q); if (s.due > 0) { const x = Math.round(Math.min(rest, s.due) * 100) / 100; out.push([m, x]); rest -= x; } }
+  return out;
+}
+function reglerForm(lotId) {
+  const du = duA(lotId);
+  openForm('Rendre une avance', [
+    { id: 'lotId', label: 'Copropriétaire', type: 'select', options: lotOptions(), value: lotId },
+    { id: 'montant', label: 'Montant rendu (' + S.cfg.devise + ')', type: 'number', required: true, value: du },
+    { id: 'mode', label: 'Comment', type: 'select', options: [['Espèces', 'En espèces (sort de la caisse)'], ['Virement', 'Par virement (sort de la caisse)'], ['Chèque', 'Par chèque (sort de la caisse)'], ['Compensation', 'Déduit de ses cotisations']], value: 'Espèces' },
+    { id: 'date', label: 'Date', type: 'date', required: true, value: today() },
+  ], async v => {
+    const l = byId('lots', v.lotId); if (!l) return;
+    if (v.mode !== 'Compensation') { if (await save('remboursements', null, { lotId: v.lotId, montant: v.montant, date: v.date, mode: v.mode })) toast('Remboursement enregistré'); return; }
+    const plan = planComp(l, v.montant); if (!plan.length) { toast('Aucune cotisation à déduire pour ce lot.'); return; }
+    const numero = 'C-' + v.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase(); let k = 0;
+    for (const [m, x] of plan) { if (!await save('paiements', null, { lotId: v.lotId, mois: m, montant: x, date: v.date, mode: 'Compensation', ref: 'Avance de frais', numero })) break; k++; }
+    if (k) toast(k + ' mois de cotisation réglés par déduction');
+  }, null, { extra: '<p class="note small" id="reg-hint"></p>', onInput: changed => {
+    const id = $('#f-lotId').value, l = byId('lots', id), mt = $('#f-montant'), d = duA(id), h = $('#reg-hint');
+    if (changed === 'lotId') mt.value = d;
+    const x = num(mt.value), parts = ['Reste dû à ce copropriétaire : ' + money(d) + '.'];
+    if (x > d + 0.004) parts.push('Le montant dépasse ce qui lui est dû.');
+    if ($('#f-mode').value === 'Compensation') { const plan = l ? planComp(l, x) : [], used = sumOf(plan, p => p[1]);
+      parts.push(plan.length ? 'Cotisations réglées : ' + plan.map(p => monthLabel(p[0], true) + (p[1] < num(l.cotisation) ? ' (' + money(p[1]) + ')' : '')).join(', ') + '.' : 'Aucune cotisation à déduire.');
+      if (used + 0.004 < x) parts.push('Seuls ' + money(used) + ' peuvent être déduits.'); }
+    else parts.push('Solde de caisse après : ' + money(caisse() - x) + '.');
+    h.textContent = parts.join(' ');
+  } });
+}
+function rembSheet(r) {
+  openSheet('Avance rendue', `<dl class="kv"><dt>Copropriétaire</dt><dd>${esc(lotName(byId('lots', r.lotId)))}</dd><dt>Montant</dt><dd class="num">${money(r.montant)}</dd><dt>Date</dt><dd>${frDate(r.date)}</dd><dt>Mode</dt><dd>${esc(r.mode || '')}</dd></dl>${S.admin ? `<button class="btn danger block" data-act="remb-del" data-id="${esc(r.id)}">Supprimer ce remboursement</button>` : ''}`);
 }
 function depSheet(d) {
   if (S.admin) return depForm(d);
-  openSheet(d.libelle, `<dl class="kv"><dt>Montant</dt><dd class="num">${money(d.montant)}</dd><dt>Date</dt><dd>${frDate(d.date)}</dd><dt>Poste</dt><dd>${esc(d.categorie || 'Divers')}</dd><dt>Fournisseur</dt><dd>${esc(d.fournisseur || 'Non précisé')}</dd></dl>${d.note ? `<p class="note">${esc(d.note)}</p>` : ''}`);
+  const st = !isPaid(d) ? 'À payer' + (d.echeance ? ' avant le ' + frDate(d.echeance) : '') : paidBy(d) === 'lot' ? 'Avancée par ' + lotName(byId('lots', d.payeurLot)) + ' le ' + frDate(payDate(d)) : 'Payée par la caisse le ' + frDate(payDate(d));
+  openSheet(d.libelle, `<dl class="kv"><dt>Montant</dt><dd class="num">${money(d.montant)}</dd><dt>Facture du</dt><dd>${frDate(d.date)}</dd><dt>Paiement</dt><dd>${esc(st)}</dd><dt>Poste</dt><dd>${esc(d.categorie || 'Divers')}</dd><dt>Fournisseur</dt><dd>${esc(d.fournisseur || 'Non précisé')}</dd></dl>${d.note ? `<p class="note">${esc(d.note)}</p>` : ''}`);
 }
 function incForm(i) {
   const f = [
@@ -613,7 +722,7 @@ function relance(l) {
 }
 function csv() {
   const q = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
-  const rows = [...S.paiements.map(p => [p.date, 'Encaissement', lotName(byId('lots', p.lotId)) + ' · ' + p.mois, num(p.montant)]), ...S.depenses.map(d => [d.date, 'Dépense', d.libelle, -num(d.montant)])].sort((a, b) => natural(a[0], b[0]));
+  const rows = [...S.paiements.filter(p => !isComp(p)).map(p => [p.date, 'Encaissement', lotName(byId('lots', p.lotId)) + ' · ' + p.mois, num(p.montant)]), ...S.depenses.filter(d => isPaid(d) && paidBy(d) === 'caisse').map(d => [payDate(d), 'Dépense', d.libelle, -num(d.montant)]), ...S.remboursements.map(r => [r.date, 'Remboursement avance', lotName(byId('lots', r.lotId)), -num(r.montant)])].sort((a, b) => natural(a[0], b[0]));
   copySheet('Journal de caisse', 'Date;Type;Libellé;Montant\n' + rows.map(r => [r[0], r[1], q(r[2]), String(r[3]).replace('.', ',')].join(';')).join('\n'));
 }
 async function purge() {
@@ -640,6 +749,10 @@ const ACTIONS = {
   relance: d => { const l = byId('lots', d.id); if (l) relance(l); },
   'dep-new': () => depForm(null),
   dep: d => { const x = byId('depenses', d.id); if (x) depSheet(x); },
+  'dep-pay': d => { const x = byId('depenses', d.id); if (x) payBillForm(x); },
+  regler: d => reglerForm(d.id),
+  remb: d => { const r = byId('remboursements', d.id); if (r) rembSheet(r); },
+  'remb-del': async (d, el) => { if (!el.dataset.armed) { el.dataset.armed = '1'; el.textContent = 'Confirmer la suppression'; return; } closeSheet(); await remove('remboursements', d.id); },
   'inc-new': () => incForm(null),
   inc: d => { const i = byId('incidents', d.id); if (i) incSheet(i); },
   'inc-edit': d => incForm(byId('incidents', d.id)),
@@ -658,7 +771,7 @@ const ACTIONS = {
     S.cfg = { ...DEFCFG, ...o.cfg }; COLS.forEach(c => S[c] = Array.isArray(o[c]) ? o[c] : []);
     pendingRestore = null; persistLocal(); closeSheet(); render(); toast('Sauvegarde restaurée');
   },
-  purge: () => openSheet('Supprimer les exemples', '<p>Les lots, paiements, dépenses, incidents et annonces marqués comme exemples seront supprimés. Vos propres saisies sont conservées.</p><div class="btns"><button class="btn danger" data-act="purge-go">Supprimer les exemples</button><button class="btn" data-act="close">Annuler</button></div>'),
+  purge: () => openSheet('Supprimer les exemples', '<p>Les lots, paiements, factures, remboursements, incidents et annonces marqués comme exemples seront supprimés. Vos propres saisies sont conservées.</p><div class="btns"><button class="btn danger" data-act="purge-go">Supprimer les exemples</button><button class="btn" data-act="close">Annuler</button></div>'),
   'purge-go': purge,
   del: async (d, el) => {
     if (!el.dataset.armed) { el.dataset.armed = '1'; el.textContent = 'Confirmer la suppression'; return; }
