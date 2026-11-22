@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Syndic de la résidence</title>
+<meta name="theme-color" content="#0E3B40">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Syndic">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -74,10 +80,11 @@ p{margin:0}
 .win{min-width:44px;height:40px;padding:0 6px;border-radius:7px 7px 2px 2px;border:1.5px solid transparent;font:700 13px var(--body);font-variant-numeric:tabular-nums}
 .win.ok{background:var(--sun);color:#2B1F00;box-shadow:0 0 14px rgba(240,185,58,.35)}
 .win.part{background:repeating-linear-gradient(135deg,rgba(240,185,58,.55) 0 6px,transparent 6px 12px);border-color:var(--sun);color:#fff}
+.win.soon,.win.hors{background:rgba(0,0,0,.22);border:1.5px solid rgba(255,255,255,.2);color:rgba(255,255,255,.72)}
 .win.due{background:rgba(0,0,0,.28);border:1.5px dashed #F2958C;color:#F9CFCA}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;padding:2px 0 14px;opacity:.9}
 .legend i{display:inline-block;width:14px;height:12px;border-radius:3px 3px 1px 1px;margin-right:5px;vertical-align:-1px;border:1.5px solid transparent}
-.legend .ok{background:var(--sun)} .legend .part{border-color:var(--sun);background:repeating-linear-gradient(135deg,rgba(240,185,58,.55) 0 3px,transparent 3px 6px)} .legend .due{border:1.5px dashed #F2958C}
+.legend .ok{background:var(--sun)} .legend .part{border-color:var(--sun);background:repeating-linear-gradient(135deg,rgba(240,185,58,.55) 0 3px,transparent 3px 6px)} .legend .due{border:1.5px dashed #F2958C} .legend .soon,.legend .hors{border:1.5px solid rgba(255,255,255,.4)}
 
 /* tiles, cards, rows */
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -122,8 +129,19 @@ p{margin:0}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .month{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .month b{font:700 18px var(--display);text-transform:capitalize}
-.month button{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px}
-.month button:disabled{opacity:.35;cursor:default}
+.month>button{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px}
+.month>button:disabled{opacity:.35;cursor:default}
+.month .mid{display:flex;flex-direction:column;align-items:center;gap:1px;text-align:center}
+.link{border:0;background:none;color:var(--accent);font-weight:600;padding:2px 4px;font-size:13.5px;text-decoration:underline;text-underline-offset:2px}
+.cal{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.mchip{display:flex;flex-direction:column;align-items:center;gap:1px;padding:8px 4px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);font-weight:600;font-size:14px;text-transform:capitalize}
+.mchip small{font-size:11.5px;font-weight:600;text-transform:none}
+.mchip.ok{background:color-mix(in srgb,var(--ok) 15%,var(--surface));color:var(--ok);border-color:transparent}
+.mchip.part{color:var(--warn);border:1.5px dashed var(--warn)}
+.mchip.due{color:var(--crit);border-color:var(--crit)}
+.mchip.soon,.mchip.hors{color:var(--muted)}
+.mchip.now{box-shadow:0 0 0 2px var(--accent)}
+.mchip:disabled{cursor:default}
 .bar{height:10px;border-radius:999px;background:var(--line);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent);border-radius:999px}
 .cat{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;font-size:14px}
@@ -192,6 +210,7 @@ const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2
 const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
 const money = n => nf.format(Math.round(num(n) * 100) / 100) + ' ' + (S.cfg.devise || 'DH');
 const etageLabel = e => { const n = num(e); return n <= 0 ? 'RDC' : n === 1 ? '1er' : n + 'e'; };
+const shift = (m, d) => { let [y, mo] = m.split('-').map(Number); mo += d; y += Math.floor((mo - 1) / 12); mo = ((mo - 1) % 12 + 12) % 12 + 1; return y + '-' + pad(mo); };
 const natural = (a, b) => String(a).localeCompare(String(b), 'fr', { numeric: true });
 
 /* ---------- state ---------- */
@@ -262,8 +281,8 @@ async function boot() {
   } catch (e) { db = null; }
   if (!db) { loadLocal(); S.mode = 'local'; render(); return; }
   if (user) {
-    S.admin = await user.canEdit();
-    S.report = true; /* la règle « incidents » autorise les contributeurs ; un refus s’affiche à l’enregistrement */
+    S.admin = await user.isOwner(); /* seule la propriétaire de l’application administre */
+    S.report = S.admin;
     S.uid = await user.id();
   }
   S.mode = 'db';
@@ -278,10 +297,27 @@ function months() {
   while ((y < by || (y === by && m <= bm)) && guard++ < 240) { out.push(y + '-' + pad(m)); if (++m > 12) { m = 1; y++; } }
   return out.length ? out : [b];
 }
+const debut = () => /^\d{4}-(0[1-9]|1[0-2])$/.test(S.cfg.debut || '') ? S.cfg.debut : thisMonth();
+const phase = m => m > thisMonth() ? 'futur' : m < debut() ? 'avant' : 'suivi';
 function payIndex() { const m = new Map(); for (const p of S.paiements) { const k = p.lotId + '|' + p.mois; m.set(k, (m.get(k) || 0) + num(p.montant)); } return m; }
 function statut(lot, mois, P) {
-  const c = num(lot.cotisation), paid = P.get(lot.id + '|' + mois) || 0;
-  return { paid, due: Math.max(0, c - paid), st: paid >= c ? 'ok' : paid > 0 ? 'part' : 'due' };
+  const c = num(lot.cotisation), paid = P.get(lot.id + '|' + mois) || 0, ph = phase(mois);
+  const st = paid >= c ? 'ok' : paid > 0 ? 'part' : ph === 'futur' ? 'soon' : ph === 'avant' ? 'hors' : 'due';
+  return { paid, due: Math.max(0, c - paid), st, ph };
+}
+const PILL = { ok: ['ok', 'Payé'], part: ['warn', 'Partiel'], due: ['crit', 'Impayé'], soon: ['neutral', 'À venir'], hors: ['neutral', 'Hors suivi'] };
+const pillFor = st => `<span class="pill ${PILL[st][0]}">${PILL[st][1]}</span>`;
+function monthBar() {
+  const m = ui.mois, cur = thisMonth(), ph = phase(m);
+  const note = ph === 'futur' ? 'Mois à venir : seuls les paiements d’avance apparaissent.'
+    : ph === 'avant' ? 'Mois antérieur au début du suivi (' + monthLabel(debut()) + ') : il ne compte pas dans les impayés.' : '';
+  return `<div class="month"><button data-act="mois" data-d="-1" aria-label="Mois précédent">‹</button><div class="mid"><b>${esc(monthLabel(m))}</b>${m !== cur ? '<button class="link" data-act="mois-now">Revenir au mois en cours</button>' : '<span class="small muted">Mois en cours</span>'}</div><button data-act="mois" data-d="1" aria-label="Mois suivant">›</button></div>` +
+    (note ? `<p class="note small">${esc(note)}${ph === 'avant' && S.admin ? ' <button class="link" data-act="debut-here">Faire commencer le suivi à ce mois</button>' : ''}</p>` : '');
+}
+function legendHTML(ph) {
+  const L = ph === 'futur' ? [['ok', 'Payé d’avance'], ['part', 'Partiel'], ['soon', 'Pas encore payé']]
+    : ph === 'avant' ? [['ok', 'Payé'], ['part', 'Partiel'], ['hors', 'Hors suivi']] : [['ok', 'Payé'], ['part', 'Partiel'], ['due', 'Impayé']];
+  return '<div class="legend">' + L.map(x => `<span><i class="${x[0]}"></i>${x[1]}</span>`).join('') + '</div>';
 }
 function arriere(lot, P) { let t = 0; const ms = []; for (const m of months()) { const s = statut(lot, m, P); if (s.due > 0) { t += s.due; ms.push(m); } } return { t, ms }; }
 const sortedLots = () => [...S.lots].sort((a, b) => natural(a.bloc || '', b.bloc || '') || num(a.etage) - num(b.etage) || natural(a.numero, b.numero));
@@ -295,7 +331,7 @@ function schedule() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; ren
 function route() { const h = location.hash.slice(1); ui.tab = TABS.includes(h) ? h : 'accueil'; }
 function banners() {
   let h = '';
-  if (S.mode === 'local') h += '<p class="note warn">Aperçu hors connexion : les saisies restent sur cet appareil.</p>';
+  if (S.mode === 'local') h += '<p class="note small">Données enregistrées sur cet appareil uniquement. Pensez à faire une sauvegarde régulière depuis Résidence.</p>';
   if (S.stale) h += '<p class="note warn">Les données ne répondent pas encore. L’affichage peut être incomplet.</p>';
   if (S.broken) h += '<p class="note warn">Une partie des données n’a pas pu être chargée.</p>';
   return h;
@@ -307,7 +343,7 @@ function render() {
   const v = $('#view'), fab = $('#fab');
   fab.hidden = true;
   if (S.mode === 'loading' || (S.mode === 'db' && S.got.size < COLS.length + 1 && !S.stale)) { v.innerHTML = '<p class="empty">Chargement des données…</p>'; return; }
-  const ms = months(); if (!ui.mois || !ms.includes(ui.mois)) ui.mois = ms[ms.length - 1];
+  if (!ui.mois) ui.mois = thisMonth();
   v.innerHTML = banners() + VIEWS[ui.tab]();
   const f = FABS[ui.tab] && FABS[ui.tab]();
   if (f) { fab.hidden = false; fab.textContent = f[0]; fab.dataset.act = f[1]; }
@@ -323,14 +359,14 @@ function facade(mois, P) {
     const inB = lots.filter(l => (l.bloc || '') === b), floors = [...new Set(inB.map(l => num(l.etage)))].sort((x, y) => y - x);
     return (blocs.length > 1 || b ? `<div class="bloc-name">${esc(b ? 'Immeuble ' + b : 'Sans immeuble')}</div>` : '') + '<div class="roof"></div>' +
       floors.map(f => `<div class="floor"><span class="fl">${etageLabel(f)}</span><div class="wins">` +
-        inB.filter(l => num(l.etage) === f).map(l => { const s = statut(l, mois, P); return `<button class="win ${s.st}" data-act="lot" data-id="${esc(l.id)}" aria-label="${esc(lotName(l))} : ${s.st === 'ok' ? 'payé' : s.st === 'part' ? 'paiement partiel' : 'impayé'}">${esc(l.numero)}</button>`; }).join('') +
+        inB.filter(l => num(l.etage) === f).map(l => { const s = statut(l, mois, P); return `<button class="win ${s.st}" data-act="lot" data-id="${esc(l.id)}" aria-label="${esc(lotName(l))} : ${PILL[s.st][1].toLowerCase()}">${esc(l.numero)}</button>`; }).join('') +
         '</div></div>').join('');
   }).join('') + '</div>';
 }
 const VIEWS = {
   accueil() {
     if (!S.lots.length) return `<div class="empty"><h2>Bienvenue</h2><p>${S.admin ? 'Renseignez la résidence, puis ajoutez les lots pour suivre les cotisations.' : 'Le syndic n’a pas encore renseigné les lots.'}</p>${S.admin ? '<div class="btns"><button class="btn" data-act="cfg">Renseigner la résidence</button><button class="btn primary" data-act="lot-new">Ajouter un lot</button></div>' : ''}</div>`;
-    const P = payIndex(), m = thisMonth(), lots = sortedLots();
+    const P = payIndex(), m = ui.mois, ph = phase(m), lots = sortedLots(), n = lots.length;
     const ok = lots.filter(l => statut(l, m, P).st === 'ok').length, pct = Math.round(ok / lots.length * 100);
     const arr = lots.map(l => ({ l, a: arriere(l, P) })).filter(x => x.a.t > 0).sort((x, y) => y.a.t - x.a.t);
     const impayes = sumOf(arr, x => x.a.t), depMois = sumOf(S.depenses.filter(d => (d.date || '').startsWith(m)), d => d.montant);
@@ -341,10 +377,10 @@ const VIEWS = {
     open.slice(0, 3).forEach(i => todo += `<li><span class="stripe ${esc(i.priorite || 'normale')}"></span><button class="row" data-act="inc" data-id="${esc(i.id)}"><span class="grow"><b>${esc(i.titre)}</b><small>Incident · ${esc(i.lieu || 'lieu non précisé')}</small></span><span class="pill ${i.statut === 'encours' ? 'warn' : 'crit'}">${i.statut === 'encours' ? 'En cours' : 'Ouvert'}</span></button></li>`);
     arr.slice(0, 3).forEach(x => todo += `<li><button class="row" data-act="lot" data-id="${esc(x.l.id)}"><span class="badge">${esc(x.l.numero)}</span><span class="grow"><b>${esc(x.l.proprietaire || lotName(x.l))}</b><small>${x.a.ms.length} mois en retard</small></span><span class="amount" style="color:var(--crit)">${money(x.a.t)}</span></button></li>`);
     return (hasEx ? `<p class="note">Données d’exemple affichées. ${S.admin ? 'Supprimez-les depuis Résidence, Réglages.' : ''}</p>` : '') +
-      `<section class="hero"><div class="hero-top"><div><p class="eyebrow">Cotisations · ${esc(monthLabel(m))}</p><p class="big">${ok} lot${ok > 1 ? 's' : ''} sur ${lots.length} à jour</p></div><div class="pct">${pct} %</div></div>${facade(m, P)}<div class="legend"><span><i class="ok"></i>Payé</span><span><i class="part"></i>Partiel</span><span><i class="due"></i>Impayé</span></div></section>
+      monthBar() + `<section class="hero"><div class="hero-top"><div><p class="eyebrow">Cotisations · ${esc(monthLabel(m))}</p><p class="big">${ok} lot${ok > 1 ? 's' : ''} sur ${n} ${ph === 'futur' ? (ok > 1 ? 'payés' : 'payé') + ' d’avance' : ph === 'avant' ? (ok > 1 ? 'ont payé' : 'a payé') : 'à jour'}</p></div><div class="pct">${pct} %</div></div>${facade(m, P)}${legendHTML(ph)}</section>
       <div class="tiles"><div class="tile wide"><span>Solde de caisse</span><b>${money(caisse())}</b></div>
       <div class="tile ${impayes > 0 ? 'crit' : ''}"><span>Impayés cumulés</span><b>${money(impayes)}</b></div>
-      <div class="tile"><span>Dépenses du mois</span><b>${money(depMois)}</b></div></div>
+      <div class="tile"><span>Dépenses · ${esc(monthLabel(m, true))}</span><b>${money(depMois)}</b></div></div>
       <section class="sec"><h3>À traiter</h3>${todo ? '<ul class="list">' + todo + '</ul>' : '<p class="empty">Rien à traiter pour le moment.</p>'}</section>` +
       (pin ? `<section class="sec"><h3>Annonce épinglée</h3><div class="card"><h2>${esc(pin.titre)}</h2><p>${esc(pin.texte)}</p><span class="small muted">${frDate(pin.date)}</span></div></section>` : '');
   },
@@ -358,21 +394,21 @@ const VIEWS = {
   caisse() {
     const seg = `<div class="seg"><button data-act="seg" data-v="cotisations" aria-pressed="${ui.seg === 'cotisations'}">Cotisations</button><button data-act="seg" data-v="depenses" aria-pressed="${ui.seg === 'depenses'}">Dépenses</button></div>`;
     if (ui.seg === 'depenses') {
-      const deps = [...S.depenses].sort((a, b) => natural(b.date, a.date)), total = sumOf(deps, d => d.montant), m = thisMonth();
+      const m = ui.mois, deps = S.depenses.filter(d => (d.date || '').startsWith(m)).sort((a, b) => natural(b.date, a.date)), total = sumOf(S.depenses, d => d.montant);
       const byCat = {}; deps.forEach(d => byCat[d.categorie || 'Divers'] = (byCat[d.categorie || 'Divers'] || 0) + num(d.montant));
       const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]), max = cats.length ? cats[0][1] : 1;
-      return seg + `<div class="tiles"><div class="tile"><span>Ce mois</span><b>${money(sumOf(deps.filter(d => (d.date || '').startsWith(m)), d => d.montant))}</b></div><div class="tile"><span>Total enregistré</span><b>${money(total)}</b></div></div>` +
+      return seg + monthBar() + `<div class="tiles"><div class="tile"><span>Dépenses · ${esc(monthLabel(m, true))}</span><b>${money(sumOf(deps, d => d.montant))}</b></div><div class="tile"><span>Total enregistré</span><b>${money(total)}</b></div></div>` +
         (cats.length ? `<section class="sec"><h3>Par poste</h3><div class="card">${cats.map(([c, v]) => `<div class="cat"><span>${esc(c)}</span><div class="bar"><i style="width:${Math.max(3, v / max * 100)}%"></i></div><span class="num">${money(v)}</span></div>`).join('')}</div></section>` : '') +
-        `<section class="sec"><h3>Journal des dépenses</h3>${deps.length ? '<ul class="list">' + deps.map(d => `<li><button class="row" data-act="dep" data-id="${esc(d.id)}"><span class="grow"><b>${esc(d.libelle)}</b><small>${frDate(d.date)} · ${esc(d.categorie || 'Divers')}${d.fournisseur ? ' · ' + esc(d.fournisseur) : ''}</small></span><span class="amount">${money(d.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="empty">Aucune dépense enregistrée.</p>'}</section>`;
+        `<section class="sec"><h3>Dépenses du mois</h3>${deps.length ? '<ul class="list">' + deps.map(d => `<li><button class="row" data-act="dep" data-id="${esc(d.id)}"><span class="grow"><b>${esc(d.libelle)}</b><small>${frDate(d.date)} · ${esc(d.categorie || 'Divers')}${d.fournisseur ? ' · ' + esc(d.fournisseur) : ''}</small></span><span class="amount">${money(d.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="empty">Aucune dépense ce mois-ci.</p>'}</section>`;
     }
     if (!S.lots.length) return seg + '<p class="empty">Ajoutez d’abord les lots pour suivre les cotisations.</p>';
-    const ms = months(), i = ms.indexOf(ui.mois), P = payIndex(), lots = sortedLots();
+    const P = payIndex(), lots = sortedLots();
     const attendu = sumOf(lots, l => l.cotisation), recu = sumOf(lots, l => Math.min(statut(l, ui.mois, P).paid, num(l.cotisation)));
-    return seg + `<div class="month"><button data-act="mois" data-d="-1" aria-label="Mois précédent" ${i <= 0 ? 'disabled' : ''}>‹</button><b>${esc(monthLabel(ui.mois))}</b><button data-act="mois" data-d="1" aria-label="Mois suivant" ${i >= ms.length - 1 ? 'disabled' : ''}>›</button></div>
+    return seg + monthBar() + `
       <div class="card"><div class="sec-head"><span>Encaissé <b class="num">${money(recu)}</b></span><span class="muted">sur ${money(attendu)}</span></div><div class="bar"><i style="width:${attendu ? recu / attendu * 100 : 0}%"></i></div></div>
       <ul class="list">` + lots.map(l => { const s = statut(l, ui.mois, P); const last = S.paiements.filter(p => p.lotId === l.id && p.mois === ui.mois).sort((a, b) => natural(b.date, a.date))[0];
-        const sub = s.st === 'ok' ? 'Payé' + (last ? ' le ' + frDate(last.date) + ' · ' + esc(last.mode || '') : '') : s.st === 'part' ? 'Reçu ' + money(s.paid) + ', reste ' + money(s.due) : 'Reste ' + money(s.due);
-        const side = s.st === 'ok' ? '<span class="pill ok">Payé</span>' : S.admin ? `<button class="btn sm primary" data-act="pay" data-id="${esc(l.id)}">Encaisser</button>` : `<span class="pill ${s.st === 'part' ? 'warn' : 'crit'}">${s.st === 'part' ? 'Partiel' : 'Impayé'}</span>`;
+        const sub = s.st === 'ok' ? 'Payé' + (last ? ' le ' + frDate(last.date) + ' · ' + esc(last.mode || '') : '') : s.st === 'part' ? 'Reçu ' + money(s.paid) + ', reste ' + money(s.due) : s.st === 'soon' ? 'Pas encore payé · ' + money(s.due) : s.st === 'hors' ? 'Non payé · hors suivi' : 'Reste ' + money(s.due);
+        const side = s.st === 'ok' ? '<span class="pill ok">Payé</span>' : S.admin ? `<button class="btn sm primary" data-act="pay" data-id="${esc(l.id)}">Encaisser</button>` : pillFor(s.st);
         return `<li><button class="row" data-act="${last ? 'recu' : 'lot'}" data-id="${esc(last ? last.id : l.id)}"><span class="badge">${esc(l.numero)}</span><span class="grow"><b>${esc(l.proprietaire || lotName(l))}</b><small>${sub}</small></span></button><span class="side">${side}</span></li>`; }).join('') + '</ul>';
   },
   incidents() {
@@ -387,14 +423,14 @@ const VIEWS = {
     const hasEx = COLS.some(c => S[c].some(d => d.exemple));
     return `<section class="sec"><div class="sec-head"><h3>Annonces</h3>${S.admin ? '<button class="btn sm" data-act="ann-new">Publier</button>' : ''}</div>${ann.length ? ann.map(a => `<div class="card"><div class="sec-head"><h2>${esc(a.titre)}</h2>${a.epingle ? '<span class="pill neutral">Épinglée</span>' : ''}</div><p>${esc(a.texte)}</p><div class="sec-head"><span class="small muted">${frDate(a.date)}</span>${S.admin ? `<button class="btn sm" data-act="ann" data-id="${esc(a.id)}">Modifier</button>` : ''}</div></div>`).join('') : '<p class="empty">Aucune annonce.</p>'}</section>
       <section class="sec"><h3>La résidence</h3><div class="card"><dl class="kv"><dt>Nom</dt><dd>${esc(S.cfg.nom)}</dd><dt>Adresse</dt><dd>${esc(S.cfg.adresse || 'Non renseignée')}</dd><dt>Lots</dt><dd>${S.lots.length}</dd><dt>Suivi depuis</dt><dd>${esc(monthLabel(months()[0]))}</dd><dt>Solde de caisse</dt><dd class="num">${money(caisse())}</dd></dl>
-      ${S.admin ? `<div class="btns"><button class="btn" data-act="cfg">Réglages</button><button class="btn" data-act="csv">Journal de caisse (CSV)</button>${hasEx ? '<button class="btn danger" data-act="purge">Supprimer les exemples</button>' : ''}</div>` : ''}</div></section>`;
+      ${S.admin ? `<div class="btns"><button class="btn" data-act="cfg">Réglages</button><button class="btn" data-act="csv">Journal de caisse (CSV)</button>${hasEx ? '<button class="btn danger" data-act="purge">Supprimer les exemples</button>' : ''}</div>` : ''}</div></section>` + (S.mode === 'local' ? `<section class="sec"><h3>Sauvegarde</h3><div class="card"><p class="small muted">Les données restent dans ce navigateur. Téléchargez une sauvegarde pour les garder en sécurité ou les passer sur un autre appareil.</p><div class="btns"><button class="btn primary" data-act="backup">Télécharger une sauvegarde</button><label class="btn" for="restore-file" style="display:inline-flex;align-items:center">Restaurer une sauvegarde</label><input type="file" id="restore-file" accept=".json,application/json" hidden></div></div></section>` : '');
   },
 };
 
 /* ---------- sheets and forms ---------- */
 let formCtx = null, lastFocus = null;
 function openSheet(title, html) {
-  lastFocus = document.activeElement;
+  if ($('#scrim').hidden) lastFocus = document.activeElement;
   $('#sheet-title').textContent = title; $('#sheet-body').innerHTML = html; $('#scrim').hidden = false;
   const f = $('#sheet-body input:not([type=checkbox]), #sheet-body select, #sheet-body textarea, #sheet-body button'); if (f) f.focus();
 }
@@ -408,9 +444,11 @@ function fieldHTML(f) {
   else c = `<input id="${id}" type="${f.type || 'text'}" value="${esc(v)}"${req}${f.type === 'number' ? ' inputmode="decimal" step="any" min="0"' : ''}${f.pattern ? ` pattern="${f.pattern}" title="${esc(f.hint || '')}"` : ''} placeholder="${esc(f.placeholder || '')}">`;
   return `<div class="field"><label for="${id}">${esc(f.label)}</label>${c}</div>`;
 }
-function openForm(title, fields, onSubmit, onDelete) {
-  formCtx = { fields, onSubmit, onDelete };
-  openSheet(title, `<form id="the-form" novalidate>${fields.map(fieldHTML).join('')}<p class="small" id="form-err" style="color:var(--crit)" hidden></p><button class="btn primary block" type="submit">Enregistrer</button>${onDelete ? '<button class="btn danger block" type="button" data-act="del">Supprimer</button>' : ''}</form>`);
+function openForm(title, fields, onSubmit, onDelete, opts) {
+  opts = opts || {};
+  formCtx = { fields, onSubmit, onDelete, onInput: opts.onInput };
+  openSheet(title, `<form id="the-form" novalidate>${fields.map(fieldHTML).join('')}${opts.extra || ''}<p class="small" id="form-err" style="color:var(--crit)" hidden></p><button class="btn primary block" type="submit">Enregistrer</button>${onDelete ? '<button class="btn danger block" type="button" data-act="del">Supprimer</button>' : ''}</form>`);
+  if (opts.onInput) opts.onInput('init');
 }
 document.addEventListener('submit', async e => {
   e.preventDefault(); if (!formCtx) return;
@@ -443,46 +481,89 @@ function lotForm(l) {
     { id: 'note', label: 'Note', type: 'textarea', value: l && l.note },
   ], v => save('lots', l, v), l && (async () => { await remove('lots', l.id); }));
 }
-function lotSheet(l) {
-  const P = payIndex(), a = arriere(l, P), ms = months().slice(-12);
-  const pays = S.paiements.filter(p => p.lotId === l.id).sort((x, y) => natural(y.date, x.date));
+let lotYear = 0;
+function lotSheet(l, year) {
+  lotYear = year || Number(ui.mois.slice(0, 4));
+  const P = payIndex(), a = arriere(l, P), cur = thisMonth();
+  const pays = S.paiements.filter(p => p.lotId === l.id).sort((x, y) => natural(y.mois, x.mois) || natural(y.date, x.date));
+  const LBL = { ok: 'Payé', part: 'Partiel', due: 'Impayé', soon: '·', hors: '·' };
+  const cal = Array.from({ length: 12 }, (_, k) => {
+    const m = lotYear + '-' + pad(k + 1), s = statut(l, m, P), p = pays.find(x => x.mois === m);
+    const toRecu = p && (s.st === 'ok' || !S.admin), act = toRecu ? 'recu' : S.admin ? 'pay-month' : '';
+    const name = new Date(lotYear, k, 1).toLocaleDateString('fr-FR', { month: 'short' });
+    return `<button type="button" class="mchip ${s.st}${m === cur ? ' now' : ''}" ${act ? `data-act="${act}" data-id="${esc(toRecu ? p.id : l.id)}" data-m="${m}"` : 'disabled'} aria-label="${esc(monthLabel(m))} : ${PILL[s.st][1].toLowerCase()}">${esc(name)}<small>${LBL[s.st]}</small></button>`;
+  }).join('');
   openSheet(lotName(l), `<dl class="kv"><dt>Copropriétaire</dt><dd>${esc(l.proprietaire || 'Non renseigné')}</dd><dt>Téléphone</dt><dd>${l.tel ? `<a href="tel:${esc(l.tel.replace(/[^\d+]/g, ''))}">${esc(l.tel)}</a>` : 'Non renseigné'}</dd><dt>Étage</dt><dd>${etageLabel(l.etage)}</dd><dt>Cotisation</dt><dd class="num">${money(l.cotisation)} / mois</dd><dt>Reste dû</dt><dd class="num" style="font-weight:700;color:var(--${a.t > 0 ? 'crit' : 'ok'})">${a.t > 0 ? money(a.t) : 'À jour'}</dd></dl>
     ${l.note ? `<p class="note">${esc(l.note)}</p>` : ''}
-    <div class="chips">${ms.map(m => { const s = statut(l, m, P); return `<span class="chip ${s.st}" title="${s.st === 'ok' ? 'Payé' : s.st === 'part' ? 'Partiel' : 'Impayé'}">${esc(monthLabel(m, true))}${s.st === 'ok' ? ' ✓' : ''}</span>`; }).join('')}</div>
-    <div class="btns">${S.admin ? `<button class="btn primary" data-act="pay" data-id="${esc(l.id)}">Encaisser</button>` : ''}${a.t > 0 && S.admin ? `<button class="btn" data-act="relance" data-id="${esc(l.id)}">Message de relance</button>` : ''}${S.admin ? `<button class="btn" data-act="lot-edit" data-id="${esc(l.id)}">Modifier</button>` : ''}</div>
-    <h3>Paiements</h3>${pays.length ? '<ul class="list">' + pays.map(p => `<li><button class="row" data-act="recu" data-id="${esc(p.id)}"><span class="grow"><b>${esc(monthLabel(p.mois))}</b><small>${frDate(p.date)} · ${esc(p.mode || '')}</small></span><span class="amount">${money(p.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="muted">Aucun paiement enregistré.</p>'}`);
+    <div class="sec-head"><h3>Cotisations ${lotYear}</h3><div class="btns"><button class="btn sm" data-act="lot-year" data-id="${esc(l.id)}" data-d="-1">‹ ${lotYear - 1}</button><button class="btn sm" data-act="lot-year" data-id="${esc(l.id)}" data-d="1">${lotYear + 1} ›</button></div></div>
+    <div class="cal">${cal}</div>
+    ${S.admin ? '<p class="small muted">Touchez un mois pour l’encaisser, qu’il soit passé ou à venir.</p>' : ''}
+    <div class="btns">${S.admin ? `<button class="btn primary" data-act="pay" data-id="${esc(l.id)}">Encaisser plusieurs mois</button>` : ''}${a.t > 0 && S.admin ? `<button class="btn" data-act="relance" data-id="${esc(l.id)}">Message de relance</button>` : ''}${S.admin ? `<button class="btn" data-act="lot-edit" data-id="${esc(l.id)}">Modifier</button>` : ''}</div>
+    <h3>Paiements</h3>${pays.length ? '<ul class="list">' + pays.map(p => `<li><button class="row" data-act="recu" data-id="${esc(p.id)}"><span class="grow"><b>${esc(monthLabel(p.mois))}</b><small>Payé le ${frDate(p.date)} · ${esc(p.mode || '')}</small></span><span class="amount">${money(p.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="muted">Aucun paiement enregistré.</p>'}`);
 }
-function payForm(lotId, p) {
-  const P = payIndex(), ms = months(), mois = p ? p.mois : ui.tab === 'caisse' ? ui.mois : ms[ms.length - 1];
+function payForm(lotId, p, moisArg) {
+  const P = payIndex(), mois = p ? p.mois : moisArg || ui.mois, now = thisMonth();
   const lot = byId('lots', lotId || (p && p.lotId)) || sortedLots()[0];
-  const opts = [...ms]; let [y, m] = ms[ms.length - 1].split('-').map(Number);
-  for (let k = 0; k < 3; k++) { if (++m > 12) { m = 1; y++; } opts.push(y + '-' + pad(m)); }
-  if (!opts.includes(mois)) opts.unshift(mois);
+  const ends = [debut(), now, mois].sort(), opts = [];
+  for (let m = shift(ends[0], -36); m <= shift(ends[2], 24); m = shift(m, 1)) opts.push([m, monthLabel(m) + (m === now ? ' (en cours)' : '')]);
   const due = lot ? statut(lot, mois, P).due : 0;
-  openForm(p ? 'Modifier le paiement' : 'Encaisser une cotisation', [
+  const fields = [
     { id: 'lotId', label: 'Lot', type: 'select', required: true, options: lotOptions(), value: lot && lot.id },
-    { id: 'mois', label: 'Mois concerné', type: 'select', required: true, options: opts.map(o => [o, monthLabel(o)]), value: mois },
-    { id: 'montant', label: 'Montant (' + S.cfg.devise + ')', type: 'number', required: true, value: p ? p.montant : due || (lot ? lot.cotisation : '') },
+    { id: 'mois', label: p ? 'Mois concerné' : 'Mois réglé (premier mois)', type: 'select', required: true, options: opts, value: mois },
+  ];
+  if (!p) fields.push({ id: 'nb', label: 'Nombre de mois réglés', type: 'select', options: Array.from({ length: 12 }, (_, k) => [k + 1, k ? (k + 1) + ' mois consécutifs' : '1 mois']), value: 1 });
+  fields.push(
+    { id: 'montant', label: (p ? 'Montant' : 'Montant par mois, reste dû proposé') + ' (' + S.cfg.devise + ')', type: 'number', required: true, value: p ? p.montant : due || (lot ? lot.cotisation : '') },
     { id: 'date', label: 'Date du paiement', type: 'date', required: true, value: p ? p.date : today() },
     { id: 'mode', label: 'Mode de paiement', type: 'select', options: MODES.map(x => [x, x]), value: p ? p.mode : 'Espèces' },
-    { id: 'ref', label: 'Référence (n° de chèque, virement)', value: p && p.ref },
-  ], async v => {
-    const numero = p && p.numero ? p.numero : 'R-' + v.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase();
-    const id = await save('paiements', p, { ...v, numero });
-    if (id) { toast('Paiement enregistré'); recuSheet({ id, ...v, numero }); }
-  }, p && (async () => { await remove('paiements', p.id); }));
+    { id: 'ref', label: 'Référence (n° de chèque, virement)', value: p && p.ref });
+  let touched = false;
+  const amountFor = (l, m, Q, base) => touched || !l ? base : (statut(l, m, Q).due || num(l.cotisation));
+  const plan = (l, start, n) => {
+    const Q = payIndex(), list = [], skipped = [];
+    for (let k = 0; k < n; k++) { const m = shift(start, k); if (n > 1 && l && statut(l, m, Q).st === 'ok') skipped.push(m); else list.push(m); }
+    return { list, skipped };
+  };
+  const hint = changed => {
+    const h = $('#pay-hint'), mt = $('#f-montant'); if (!h || !mt) return;
+    const l = byId('lots', $('#f-lotId').value), start = $('#f-mois').value, n = $('#f-nb') ? Number($('#f-nb').value) : 1;
+    if (changed === 'montant') touched = true;
+    if (!p && (changed === 'lotId' || changed === 'mois') && !touched && l) { const s = statut(l, start, payIndex()); mt.value = s.due || num(l.cotisation); }
+    const { list, skipped } = plan(l, start, n), parts = [];
+    if (list.length > 1) parts.push(`Période : ${monthLabel(list[0])} à ${monthLabel(list[list.length - 1])}, ${list.length} mois. Total : ${money(sumOf(list, m => amountFor(l, m, payIndex(), num(mt.value))))}.`);
+    else if (!p && list.length === 1 && l && statut(l, list[0], payIndex()).st === 'ok') parts.push('Ce mois est déjà entièrement réglé.');
+    if (skipped.length) parts.push('Déjà réglés, ignorés : ' + skipped.map(m => monthLabel(m, true)).join(', ') + '.');
+    if (!list.length) parts.push('Tous ces mois sont déjà réglés.');
+    const f = list.filter(m => phase(m) === 'futur').length, b = list.filter(m => phase(m) === 'avant').length;
+    if (f) parts.push(f === list.length ? 'Paiement d’avance.' : 'Comprend des mois payés d’avance.');
+    if (b) parts.push('Comprend des mois antérieurs au début du suivi (' + monthLabel(debut()) + ').');
+    h.textContent = parts.join(' '); h.hidden = !parts.length;
+  };
+  openForm(p ? 'Modifier le paiement' : 'Encaisser une cotisation', fields, async v => {
+    const n = Number(v.nb) || 1; delete v.nb;
+    if (p) { if (await save('paiements', p, v)) toast('Paiement modifié'); return; }
+    const lv = byId('lots', v.lotId), Q = payIndex(), { list } = plan(lv, v.mois, n);
+    if (!list.length) { toast('Ces mois sont déjà réglés.'); return; }
+    const numero = 'R-' + v.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase(), saved = [];
+    for (const m of list) { const row = { ...v, mois: m, numero, montant: n > 1 ? amountFor(lv, m, Q, v.montant) : v.montant }, id = await save('paiements', null, row); if (!id) break; saved.push({ id, ...row }); }
+    if (saved.length) { toast(saved.length > 1 ? saved.length + ' mois enregistrés' : 'Paiement enregistré'); recuSheet(saved[0], saved); }
+  }, p && (async () => { await remove('paiements', p.id); }), { extra: '<p class="note small" id="pay-hint" hidden></p>', onInput: hint });
 }
-function recuSheet(p) {
-  const l = byId('lots', p.lotId);
-  const text = `REÇU DE PAIEMENT N° ${p.numero || ''}\n${S.cfg.nom}${S.cfg.adresse ? '\n' + S.cfg.adresse : ''}\n\n${lotName(l)}${l && l.proprietaire ? ' · ' + l.proprietaire : ''}\nPériode : ${monthLabel(p.mois)}\nMontant reçu : ${money(p.montant)}\nMode : ${p.mode || ''}${p.ref ? ' (réf. ' + p.ref + ')' : ''}\nDate : ${frDate(p.date)}\n\nLe syndic`;
-  copySheet('Reçu de paiement', text, S.admin && byId('paiements', p.id) ? `<button class="btn block" data-act="pay-edit" data-id="${esc(p.id)}">Modifier ce paiement</button>` : '');
+function recuSheet(p, list) {
+  const grp = list || (p.numero ? S.paiements.filter(x => x.numero === p.numero && x.lotId === p.lotId) : []);
+  const rows = (grp.length ? grp : [p]).slice().sort((a, b) => natural(a.mois, b.mois));
+  const l = byId('lots', p.lotId), total = sumOf(rows, x => x.montant);
+  const suite = rows.every((x, k) => !k || x.mois === shift(rows[k - 1].mois, 1));
+  const periode = rows.length === 1 ? monthLabel(rows[0].mois) : suite ? `de ${monthLabel(rows[0].mois)} à ${monthLabel(rows[rows.length - 1].mois)} (${rows.length} mois)` : rows.map(x => monthLabel(x.mois)).join(', ');
+  const text = `REÇU DE PAIEMENT N° ${p.numero || ''}\n${S.cfg.nom}${S.cfg.adresse ? '\n' + S.cfg.adresse : ''}\n\n${lotName(l)}${l && l.proprietaire ? ' · ' + l.proprietaire : ''}\nPériode : ${periode}\nMontant reçu : ${money(total)}\nMode : ${p.mode || ''}${p.ref ? ' (réf. ' + p.ref + ')' : ''}\nDate : ${frDate(p.date)}\n\nLe syndic`;
+  copySheet('Reçu de paiement', text, S.admin && byId('paiements', p.id) ? `<button class="btn block" data-act="pay-edit" data-id="${esc(p.id)}">${rows.length > 1 ? 'Modifier le paiement de ' + esc(monthLabel(p.mois)) : 'Modifier ce paiement'}</button>` : '');
 }
 function depForm(d) {
   openForm(d ? 'Modifier la dépense' : 'Nouvelle dépense', [
     { id: 'libelle', label: 'Libellé', required: true, value: d && d.libelle, placeholder: 'ex. Facture électricité parties communes' },
     { id: 'categorie', label: 'Poste', type: 'select', options: CATS.map(c => [c, c]), value: d ? d.categorie : 'Entretien' },
     { id: 'montant', label: 'Montant (' + S.cfg.devise + ')', type: 'number', required: true, value: d && d.montant },
-    { id: 'date', label: 'Date', type: 'date', required: true, value: d ? d.date : today() },
+    { id: 'date', label: 'Date', type: 'date', required: true, value: d ? d.date : (ui.mois === thisMonth() ? today() : ui.mois + '-01') },
     { id: 'fournisseur', label: 'Fournisseur ou prestataire', value: d && d.fournisseur },
     { id: 'note', label: 'Note', type: 'textarea', value: d && d.note },
   ], v => save('depenses', d, v), d && (async () => { await remove('depenses', d.id); }));
@@ -545,7 +626,11 @@ async function purge() {
 const ACTIONS = {
   close: closeSheet,
   seg: d => { ui.seg = d.v; render(); },
-  mois: d => { const ms = months(), i = ms.indexOf(ui.mois) + Number(d.d); if (ms[i]) { ui.mois = ms[i]; render(); } },
+  mois: d => { const m = shift(ui.mois, Number(d.d)); if (m >= '2000-01' && m <= '2100-12') { ui.mois = m; render(); } },
+  'mois-now': () => { ui.mois = thisMonth(); render(); },
+  'debut-here': async () => { if (await saveCfg({ debut: ui.mois })) toast('Le suivi commence en ' + monthLabel(ui.mois)); },
+  'lot-year': d => { const l = byId('lots', d.id); if (l) lotSheet(l, lotYear + Number(d.d)); },
+  'pay-month': d => payForm(d.id, null, d.m),
   'lot-new': () => lotForm(null),
   lot: d => { const l = byId('lots', d.id); if (l) lotSheet(l); },
   'lot-edit': d => lotForm(byId('lots', d.id)),
@@ -562,6 +647,17 @@ const ACTIONS = {
   'ann-new': () => annForm(null),
   ann: d => annForm(byId('annonces', d.id)),
   cfg: cfgForm, csv,
+  backup: () => {
+    const o = { app: 'syndic', version: 1, exporte: new Date().toISOString(), cfg: S.cfg }; COLS.forEach(c => o[c] = S[c]);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(o, null, 1)], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'syndic-sauvegarde-' + today() + '.json'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000); toast('Sauvegarde téléchargée');
+  },
+  'restore-go': () => {
+    const o = pendingRestore; if (!o) return closeSheet();
+    S.cfg = { ...DEFCFG, ...o.cfg }; COLS.forEach(c => S[c] = Array.isArray(o[c]) ? o[c] : []);
+    pendingRestore = null; persistLocal(); closeSheet(); render(); toast('Sauvegarde restaurée');
+  },
   purge: () => openSheet('Supprimer les exemples', '<p>Les lots, paiements, dépenses, incidents et annonces marqués comme exemples seront supprimés. Vos propres saisies sont conservées.</p><div class="btns"><button class="btn danger" data-act="purge-go">Supprimer les exemples</button><button class="btn" data-act="close">Annuler</button></div>'),
   'purge-go': purge,
   del: async (d, el) => {
@@ -579,14 +675,29 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const fn = ACTIONS[el.dataset.act]; if (fn) fn(el.dataset, el);
 });
+let pendingRestore = null;
+document.addEventListener('change', e => {
+  if (e.target.id !== 'restore-file' || !e.target.files[0]) return;
+  const r = new FileReader();
+  r.onload = () => {
+    let o = null; try { o = JSON.parse(r.result); } catch (err) {}
+    e.target.value = '';
+    if (!o || o.app !== 'syndic' || !Array.isArray(o.lots)) { toast('Ce fichier n’est pas une sauvegarde de l’application.'); return; }
+    pendingRestore = o;
+    openSheet('Restaurer la sauvegarde', `<p>Sauvegarde du ${esc(frDate((o.exporte || '').slice(0, 10)))} : ${o.lots.length} lots, ${(o.paiements || []).length} paiements, ${(o.depenses || []).length} dépenses.</p><p class="note warn">Les données actuelles de cet appareil seront remplacées.</p><div class="btns"><button class="btn danger" data-act="restore-go">Remplacer par la sauvegarde</button><button class="btn" data-act="close">Annuler</button></div>`);
+  };
+  r.readAsText(e.target.files[0]);
+});
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#scrim').hidden) closeSheet(); });
 document.addEventListener('input', e => {
+  if (formCtx && formCtx.onInput && (e.target.id || '').startsWith('f-')) formCtx.onInput(e.target.id.slice(2));
   if (e.target.id !== 'lot-search') return;
   const q = e.target.value.trim().toLowerCase();
   document.querySelectorAll('#lot-list li').forEach(li => li.hidden = !!q && !li.dataset.q.includes(q));
 });
 window.addEventListener('hashchange', () => { route(); render(); $('#view').scrollTop = 0; });
 boot();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
 </html>
