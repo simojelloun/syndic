@@ -90,6 +90,8 @@ p{margin:0}
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:4px}
 .tile.wide{grid-column:1/-1}
+.tile-btn{text-align:left;font:inherit;color:inherit;cursor:pointer}
+.tile-btn em{font-style:normal;color:var(--accent);font-size:13px;font-weight:600}
 .tile b{font:700 22px/1.1 var(--display);font-variant-numeric:tabular-nums}
 .tile span{font-size:13px;color:var(--muted)}
 .tile.crit b{color:var(--crit)}
@@ -461,7 +463,7 @@ const VIEWS = {
     arr.slice(0, 3).forEach(x => todo += `<li><button class="row" data-act="lot" data-id="${esc(x.l.id)}"><span class="badge">${esc(x.l.numero)}</span><span class="grow"><b>${esc(x.l.proprietaire || lotName(x.l))}</b><small>${x.a.ms.length} mois en retard</small></span><span class="amount" style="color:var(--crit)">${money(x.a.t)}</span></button></li>`);
     return (hasEx ? `<p class="note">Données d’exemple affichées. ${S.admin ? 'Supprimez-les depuis Résidence, Réglages.' : ''}</p>` : '') +
       monthBar() + `<section class="hero"><div class="hero-top"><div><p class="eyebrow">Cotisations · ${esc(monthLabel(m))}</p><p class="big">${ok} lot${ok > 1 ? 's' : ''} sur ${n} ${ph === 'futur' ? (ok > 1 ? 'payés' : 'payé') + ' d’avance' : ph === 'avant' ? (ok > 1 ? 'ont payé' : 'a payé') : 'à jour'}</p></div><div class="pct">${pct} %</div></div>${facade(m, P)}${legendHTML(ph)}</section>
-      <div class="tiles"><div class="tile wide"><span>Solde de caisse</span><b>${money(caisse())}</b></div>
+      <div class="tiles"><button class="tile wide tile-btn" data-act="solde"><span>Solde de caisse</span><b>${money(caisse())}</b><em>${S.admin ? 'Voir le détail ou modifier le solde de départ' : 'Voir le détail'}</em></button>
       <div class="tile ${impayes > 0 ? 'crit' : ''}"><span>Impayés cumulés</span><b>${money(impayes)}</b></div>
       <div class="tile"><span>Dépenses · ${esc(monthLabel(m, true))}</span><b>${money(depMois)}</b></div>
       <div class="tile ${late ? 'crit' : ''}"><span>Factures à payer</span><b>${money(totAP)}</b></div>
@@ -727,6 +729,29 @@ function reglerForm(lotId, mode0) {
     h.textContent = parts.join(' ');
   } });
 }
+function soldeParts() {
+  const enc = sumOf(S.paiements.filter(p => !isComp(p)), p => p.montant), dep = sumOf(S.depenses.filter(d => isPaid(d) && paidBy(d) === 'caisse'), d => d.montant), rem = sumOf(S.remboursements, r => r.montant);
+  return { ini: num(S.cfg.soldeInitial), enc, dep, rem, mouv: enc - dep - rem };
+}
+function soldeDetail(ini) {
+  const x = soldeParts();
+  return `<dl class="kv"><dt>Solde de départ</dt><dd class="num">${money(ini)}</dd><dt>+ Cotisations encaissées</dt><dd class="num">${money(x.enc)}</dd><dt>− Factures payées par la caisse</dt><dd class="num">${money(x.dep)}</dd><dt>− Avances rendues</dt><dd class="num">${money(x.rem)}</dd><dt><b>= Solde de caisse</b></dt><dd class="num"><b>${money(ini + x.mouv)}</b></dd></dl>`;
+}
+function soldeForm() {
+  const x = soldeParts();
+  if (!S.admin) return openSheet('Solde de caisse', soldeDetail(x.ini) + '<p class="small muted">Les cotisations réglées par déduction d’avances et les factures avancées par un copropriétaire ne passent pas par la caisse.</p>');
+  openForm('Solde de caisse', [
+    { id: 'soldeInitial', label: 'Solde de départ (' + S.cfg.devise + ')', type: 'number', required: true, value: x.ini },
+    { id: 'reel', label: 'Ou : montant réellement en caisse aujourd’hui', type: 'number', value: '', placeholder: 'Le solde de départ sera recalculé' },
+  ], async v => { if (await saveCfg({ soldeInitial: v.soldeInitial })) toast('Solde de départ enregistré'); }, null, {
+    extra: '<p class="small muted">Le solde de départ est l’argent qui était en caisse au début du suivi des cotisations (' + esc(monthLabel(debut())) + ').</p><div class="card" id="solde-detail"></div>',
+    onInput: changed => {
+      const si = $('#f-soldeInitial'), re = $('#f-reel');
+      if (changed === 'reel' && re.value.trim() !== '') si.value = Math.round((num(re.value) - x.mouv) * 100) / 100;
+      if (changed === 'soldeInitial') re.value = '';
+      $('#solde-detail').innerHTML = soldeDetail(num(si.value));
+    } });
+}
 function rembSheet(r) {
   openSheet('Avance rendue', `<dl class="kv"><dt>Copropriétaire</dt><dd>${esc(lotName(byId('lots', r.lotId)))}</dd><dt>Montant</dt><dd class="num">${money(r.montant)}</dd><dt>Date</dt><dd>${frDate(r.date)}</dd><dt>Mode</dt><dd>${esc(r.mode || '')}</dd></dl>${S.admin ? `<button class="btn danger block" data-act="remb-del" data-id="${esc(r.id)}">Supprimer ce remboursement</button>` : ''}`);
 }
@@ -805,6 +830,7 @@ const ACTIONS = {
   dep: d => { const x = byId('depenses', d.id); if (x) depSheet(x); },
   'dep-pay': d => { const x = byId('depenses', d.id); if (x) payBillForm(x); },
   regler: d => reglerForm(d.id),
+  solde: () => soldeForm(),
   compenser: d => reglerForm(d.id, 'Compensation'),
   'lot-vue': d => { ui.lotVue = d.v; render(); },
   'dep-vue': d => { ui.depVue = d.v; render(); },
