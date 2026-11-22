@@ -130,6 +130,8 @@ p{margin:0}
 .seg.two{grid-template-columns:1fr 1fr}
 .list li.wrap{flex-wrap:wrap}
 .list li.wrap .side{flex-basis:100%;padding:0 14px 12px 70px}
+.rep-in{width:104px;padding:9px 10px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface2);text-align:right;font-variant-numeric:tabular-nums}
+label.row{cursor:default}
 .mlist{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .mlist span{font-size:12px;font-weight:600;padding:2px 7px;border-radius:6px;border:1px solid var(--crit);color:var(--crit);font-variant-numeric:tabular-nums}
 .mlist span.part{border-style:dashed;border-color:var(--warn);color:var(--warn)}
@@ -142,7 +144,7 @@ p{margin:0}
 .month b{font:700 18px var(--display);text-transform:capitalize}
 .month>button{width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:18px}
 .month>button:disabled{opacity:.35;cursor:default}
-.side .btns{flex-wrap:nowrap}
+.side .btns{flex-wrap:wrap}
 .month .mid{display:flex;flex-direction:column;align-items:center;gap:1px;text-align:center}
 .link{border:0;background:none;color:var(--accent);font-weight:600;padding:2px 4px;font-size:13.5px;text-decoration:underline;text-underline-offset:2px}
 .cal{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -340,6 +342,7 @@ const isPaid = d => d.statut !== 'a_payer';
 const paidBy = d => d.payeur === 'lot' ? 'lot' : 'caisse';
 const payDate = d => d.payeLe || d.date || '';
 const isComp = p => p.mode === 'Compensation';
+const modeLabel = p => isComp(p) ? 'pris sur son avance' : (p.mode || '');
 const caisse = () => num(S.cfg.soldeInitial) + sumOf(S.paiements.filter(p => !isComp(p)), p => p.montant)
   - sumOf(S.depenses.filter(d => isPaid(d) && paidBy(d) === 'caisse'), d => d.montant) - sumOf(S.remboursements, r => r.montant);
 const aPayer = () => S.depenses.filter(d => !isPaid(d)).sort((a, b) => natural(a.echeance || '9999', b.echeance || '9999') || natural(a.date, b.date));
@@ -408,7 +411,7 @@ function avancesView() {
   return `<div class="tiles"><div class="tile wide ${tot > 0 ? 'crit' : ''}"><span>Le syndic doit aux copropriétaires</span><b>${money(tot)}</b></div></div>
     <p class="note small">Quand un copropriétaire paie une facture de la résidence de sa poche, le syndic lui doit ce montant. On le lui rend en argent (cela sort de la caisse) ou en le déduisant de ses cotisations.</p>
     <section class="sec"><h3>Par copropriétaire</h3>${rows.length ? '<ul class="list">' + rows.map(l => { const v = D.get(l.id);
-      return `<li><button class="row" data-act="lot" data-id="${esc(l.id)}"><span class="badge">${esc(l.numero)}</span><span class="grow"><b>${esc(l.proprietaire || lotName(l))}</b><small>Avancé ${money(v.avance)} · rendu ${money(v.rendu)}</small></span>${v.du > 0 && S.admin ? '' : v.du > 0 ? `<span class="amount" style="color:var(--warn)">${money(v.du)}</span>` : '<span class="pill ok">Soldé</span>'}</button>${v.du > 0 && S.admin ? `<span class="side"><button class="btn sm primary" data-act="regler" data-id="${esc(l.id)}">Rendre ${money(v.du)}</button></span>` : ''}</li>`; }).join('') + '</ul>' : '<p class="empty">Aucun copropriétaire n’a avancé de frais.</p>'}</section>
+      return `<li${S.admin && v.avance > 0 ? ' class="wrap"' : ''}><button class="row" data-act="lot" data-id="${esc(l.id)}"><span class="badge">${esc(l.numero)}</span><span class="grow"><b>${esc(l.proprietaire || lotName(l))}</b><small>Avancé ${money(v.avance)} · rendu ${money(v.rendu)}</small></span>${v.du > 0 ? `<span class="amount" style="color:var(--warn)">${money(v.du)}</span>` : '<span class="pill ok">Soldé</span>'}</button>${S.admin && v.avance > 0 ? `<span class="side"><span class="btns"><button class="btn sm primary" data-act="repartir" data-id="${esc(l.id)}">Répartir sur ses cotisations</button>${v.du > 0 ? `<button class="btn sm" data-act="regler" data-id="${esc(l.id)}">Rendre en argent</button>` : ''}</span></span>` : ''}</li>`; }).join('') + '</ul>' : '<p class="empty">Aucun copropriétaire n’a avancé de frais.</p>'}</section>
     ${mv.length ? `<section class="sec"><h3>Mouvements</h3><ul class="list">${mv.map(x => `<li><button class="row" data-act="${x.act}" data-id="${esc(x.id)}"><span class="grow"><b>${esc(x.t === 'Avance' ? 'Avance de frais' : 'Avance rendue')}</b><small>${frDate(x.date)} · ${esc(x.lib)}</small></span><span class="amount" style="color:var(--${x.v > 0 ? 'warn' : 'ok'})">${x.v > 0 ? '+' : '−'} ${money(Math.abs(x.v))}</span></button></li>`).join('')}</ul></section>` : ''}`;
 }
 const depuisM = () => /^\d{4}-\d{2}$/.test(ui.depuis || '') ? ui.depuis : debut();
@@ -434,7 +437,7 @@ function soldesView() {
     <div class="tile"><span>Cotisations impayées</span><b>${money(totImp)}</b></div><div class="tile"><span>Avances à rendre</span><b>${money(totAv)}</b></div></div>
     ${to > thisMonth() ? '<p class="note small">La période inclut des mois à venir : leurs cotisations non encore payées sont comptées comme dues.</p>' : ''}
     ${from < debut() ? `<p class="note small">La période commence avant le début du suivi (${esc(monthLabel(debut()))}) : ces mois sont comptés ici, mais pas dans les impayés du reste de l’application.</p>` : ''}
-    <section class="sec"><h3>Par copropriétaire</h3><ul class="list">${rows.map(r => `<li${S.admin && r.imp > 0 && r.av > 0 ? ' class="wrap"' : ''}><button class="row" data-act="lot" data-id="${esc(r.l.id)}"><span class="badge">${esc(r.l.numero)}</span><span class="grow"><b>${esc(r.l.proprietaire || lotName(r.l))}</b><small>${r.nm ? r.nm + ' mois impayé' + (r.nm > 1 ? 's' : '') + ' · ' + money(r.imp) : 'Cotisations à jour'}${r.av ? ' · avance ' + money(r.av) : ''}</small>${r.nm ? '<span class="mlist">' + r.det.map(x => `<span class="${x.s.paid > 0 ? 'part' : ''}">${esc(monthLabel(x.m, true))}${x.s.paid > 0 ? ' · ' + money(x.s.due) : ''}</span>`).join('') + '</span>' : ''}</span>${r.net > 0 ? `<span class="amount" style="color:var(--crit)">${money(r.net)}</span>` : r.net < 0 ? `<span class="amount" style="color:var(--warn)">− ${money(-r.net)}</span>` : '<span class="pill ok">À jour</span>'}</button>${S.admin && r.imp > 0 && r.av > 0 ? `<span class="side"><button class="btn sm" data-act="compenser" data-id="${esc(r.l.id)}">Déduire son avance de ses cotisations</button></span>` : ''}</li>`).join('')}</ul>
+    <section class="sec"><h3>Par copropriétaire</h3><ul class="list">${rows.map(r => `<li${S.admin && r.imp > 0 && r.av > 0 ? ' class="wrap"' : ''}><button class="row" data-act="lot" data-id="${esc(r.l.id)}"><span class="badge">${esc(r.l.numero)}</span><span class="grow"><b>${esc(r.l.proprietaire || lotName(r.l))}</b><small>${r.nm ? r.nm + ' mois impayé' + (r.nm > 1 ? 's' : '') + ' · ' + money(r.imp) : 'Cotisations à jour'}${r.av ? ' · avance ' + money(r.av) : ''}</small>${r.nm ? '<span class="mlist">' + r.det.map(x => `<span class="${x.s.paid > 0 ? 'part' : ''}">${esc(monthLabel(x.m, true))}${x.s.paid > 0 ? ' · ' + money(x.s.due) : ''}</span>`).join('') + '</span>' : ''}</span>${r.net > 0 ? `<span class="amount" style="color:var(--crit)">${money(r.net)}</span>` : r.net < 0 ? `<span class="amount" style="color:var(--warn)">− ${money(-r.net)}</span>` : '<span class="pill ok">À jour</span>'}</button>${S.admin && r.imp > 0 && r.av > 0 ? `<span class="side"><button class="btn sm" data-act="compenser" data-id="${esc(r.l.id)}">Répartir son avance sur ses cotisations</button></span>` : ''}</li>`).join('')}</ul>
     <p class="small muted">Un montant précédé de « − » est dû par le syndic au copropriétaire. Un mois en pointillés est partiellement payé, le montant indiqué est le reste.</p></section>
     <section class="sec"><h3>Par mois</h3><ul class="list">${parMois.map(x => `<li><button class="row" data-act="voir-mois" data-m="${x.m}"><span class="grow"><b style="text-transform:capitalize">${esc(monthLabel(x.m))}</b><small>${x.n ? x.n + ' lot' + (x.n > 1 ? 's' : '') + ' non réglé' + (x.n > 1 ? 's' : '') : 'Tous les lots ont payé'}</small></span>${x.t > 0 ? `<span class="amount" style="color:var(--crit)">${money(x.t)}</span>` : '<span class="pill ok">Complet</span>'}</button></li>`).join('')}</ul></section>
     ${S.admin ? '<button class="btn block" data-act="soldes-copy">Copier la liste des montants dus</button>' : ''}`;
@@ -508,7 +511,7 @@ const VIEWS = {
     return seg + monthBar() + `
       <div class="card"><div class="sec-head"><span>Encaissé <b class="num">${money(recu)}</b></span><span class="muted">sur ${money(attendu)}</span></div><div class="bar"><i style="width:${attendu ? recu / attendu * 100 : 0}%"></i></div></div>
       <ul class="list">` + lots.map(l => { const s = statut(l, ui.mois, P); const last = S.paiements.filter(p => p.lotId === l.id && p.mois === ui.mois).sort((a, b) => natural(b.date, a.date))[0];
-        const sub = s.st === 'ok' ? 'Payé' + (last ? ' le ' + frDate(last.date) + ' · ' + esc(last.mode || '') : '') : s.st === 'part' ? 'Reçu ' + money(s.paid) + ', reste ' + money(s.due) : s.st === 'soon' ? 'Pas encore payé · ' + money(s.due) : s.st === 'hors' ? 'Non payé · hors suivi' : 'Reste ' + money(s.due);
+        const sub = s.st === 'ok' ? 'Payé' + (last ? ' le ' + frDate(last.date) + ' · ' + esc(modeLabel(last)) : '') : s.st === 'part' ? 'Reçu ' + money(s.paid) + ', reste ' + money(s.due) : s.st === 'soon' ? 'Pas encore payé · ' + money(s.due) : s.st === 'hors' ? 'Non payé · hors suivi' : 'Reste ' + money(s.due);
         const side = s.st === 'ok' ? '<span class="pill ok">Payé</span>' : S.admin ? `<button class="btn sm primary" data-act="pay" data-id="${esc(l.id)}">Encaisser</button>` : pillFor(s.st);
         return `<li><button class="row" data-act="${last ? 'recu' : 'lot'}" data-id="${esc(last ? last.id : l.id)}"><span class="badge">${esc(l.numero)}</span><span class="grow"><b>${esc(l.proprietaire || lotName(l))}</b><small>${sub}</small></span></button><span class="side">${side}</span></li>`; }).join('') + '</ul>';
   },
@@ -596,12 +599,13 @@ function lotSheet(l, year) {
   }).join('');
   openSheet(lotName(l), `<dl class="kv"><dt>Copropriétaire</dt><dd>${esc(l.proprietaire || 'Non renseigné')}</dd><dt>Téléphone</dt><dd>${l.tel ? `<a href="tel:${esc(l.tel.replace(/[^\d+]/g, ''))}">${esc(l.tel)}</a>` : 'Non renseigné'}</dd><dt>Étage</dt><dd>${etageLabel(l.etage)}</dd><dt>Cotisation</dt><dd class="num">${money(l.cotisation)} / mois</dd><dt>Reste dû</dt><dd class="num" style="font-weight:700;color:var(--${a.t > 0 ? 'crit' : 'ok'})">${a.t > 0 ? money(a.t) : 'À jour'}</dd></dl>
     ${l.note ? `<p class="note">${esc(l.note)}</p>` : ''}
-    ${duA(l.id) > 0 ? `<div class="note warn"><p>Le syndic doit <b>${money(duA(l.id))}</b> à ce copropriétaire pour des frais avancés.</p>${S.admin ? `<div class="btns" style="margin-top:8px"><button class="btn sm primary" data-act="regler" data-id="${esc(l.id)}">Rendre l’avance</button></div>` : ''}</div>` : ''}
+    ${(() => { const D = dettes().get(l.id); if (!D || D.avance <= 0) return ''; const comp = sumOf(S.paiements.filter(p => isComp(p) && p.lotId === l.id), p => p.montant), remb = sumOf(S.remboursements.filter(r => r.lotId === l.id), r => r.montant);
+      return `<div class="note ${D.du > 0 ? 'warn' : ''}"><p>Frais avancés : <b>${money(D.avance)}</b> · déduits des cotisations : ${money(comp)} · rendus en argent : ${money(remb)}.<br><b>Reste à lui rendre : ${money(D.du)}</b></p>${S.admin ? `<div class="btns" style="margin-top:8px"><button class="btn sm primary" data-act="repartir" data-id="${esc(l.id)}">${comp > 0 ? 'Modifier la répartition' : 'Répartir sur ses cotisations'}</button>${D.du > 0 ? `<button class="btn sm" data-act="regler" data-id="${esc(l.id)}">Rendre en argent</button>` : ''}</div>` : ''}</div>`; })()}
     <div class="sec-head"><h3>Cotisations ${lotYear}</h3><div class="btns"><button class="btn sm" data-act="lot-year" data-id="${esc(l.id)}" data-d="-1">‹ ${lotYear - 1}</button><button class="btn sm" data-act="lot-year" data-id="${esc(l.id)}" data-d="1">${lotYear + 1} ›</button></div></div>
     <div class="cal">${cal}</div>
     ${S.admin ? '<p class="small muted">Touchez un mois pour l’encaisser, qu’il soit passé ou à venir.</p>' : ''}
     <div class="btns">${S.admin ? `<button class="btn primary" data-act="pay" data-id="${esc(l.id)}">Encaisser plusieurs mois</button>` : ''}${a.t > 0 && S.admin ? `<button class="btn" data-act="relance" data-id="${esc(l.id)}">Message de relance</button>` : ''}${S.admin ? `<button class="btn" data-act="lot-edit" data-id="${esc(l.id)}">Modifier</button>` : ''}</div>
-    <h3>Paiements</h3>${pays.length ? '<ul class="list">' + pays.map(p => `<li><button class="row" data-act="recu" data-id="${esc(p.id)}"><span class="grow"><b>${esc(monthLabel(p.mois))}</b><small>Payé le ${frDate(p.date)} · ${esc(p.mode || '')}</small></span><span class="amount">${money(p.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="muted">Aucun paiement enregistré.</p>'}`);
+    <h3>Paiements</h3>${pays.length ? '<ul class="list">' + pays.map(p => `<li><button class="row" data-act="recu" data-id="${esc(p.id)}"><span class="grow"><b>${esc(monthLabel(p.mois))}</b><small>Payé le ${frDate(p.date)} · ${esc(modeLabel(p))}</small></span><span class="amount">${money(p.montant)}</span></button></li>`).join('') + '</ul>' : '<p class="muted">Aucun paiement enregistré.</p>'}`);
 }
 function payForm(lotId, p, moisArg) {
   const P = payIndex(), mois = p ? p.mois : moisArg || ui.mois, now = thisMonth();
@@ -757,6 +761,53 @@ function soldeForm() {
       $('#solde-detail').innerHTML = soldeDetail(num(si.value));
     } });
 }
+function repartData(l) {
+  const D = dettes().get(l.id) || { avance: 0 };
+  const remb = sumOf(S.remboursements.filter(r => r.lotId === l.id), r => r.montant), comps = S.paiements.filter(p => isComp(p) && p.lotId === l.id);
+  const dispo = Math.round((D.avance - remb) * 100) / 100, cash = new Map(), cur = new Map();
+  S.paiements.filter(p => !isComp(p) && p.lotId === l.id).forEach(p => cash.set(p.mois, (cash.get(p.mois) || 0) + num(p.montant)));
+  comps.forEach(p => cur.set(p.mois, (cur.get(p.mois) || 0) + num(p.montant)));
+  let start = debut(); comps.forEach(p => { if (p.mois < start) start = p.mois; });
+  const rows = [];
+  for (let m = start; m <= shift(thisMonth(), 12); m = shift(m, 1)) {
+    const pc = cash.get(m) || 0, ec = Math.round((cur.get(m) || 0) * 100) / 100, max = Math.max(ec, Math.round((num(l.cotisation) - pc) * 100) / 100);
+    if (max > 0.004) rows.push({ m, pc, ec, max });
+  }
+  return { dispo, comps, rows };
+}
+function repartSheet(l) {
+  const { dispo, rows } = repartData(l);
+  if (dispo <= 0.004) { toast('Ce copropriétaire n’a pas d’avance à répartir.'); return; }
+  openSheet('Répartir l’avance', `<p><b>${esc(lotName(l))}</b>${l.proprietaire ? ' · ' + esc(l.proprietaire) : ''}</p>
+    <p class="small muted">Indiquez, pour chaque mois, la part de son avance de frais qui règle sa cotisation. Ce qui n’est pas réparti reste à lui rendre.</p>
+    <div class="card" id="rep-sum" data-dispo="${dispo}"></div>
+    <div class="btns"><button class="btn sm" data-act="rep-auto">Remplir du plus ancien au plus récent</button><button class="btn sm" data-act="rep-zero">Tout mettre à zéro</button></div>
+    <ul class="list">${rows.map(r => `<li><label class="row" for="rep-${r.m}"><span class="grow"><b style="text-transform:capitalize">${esc(monthLabel(r.m))}</b><small>${r.pc > 0 ? 'Déjà payé ' + money(r.pc) + ' · ' : ''}reste ${money(r.max)}${phase(r.m) === 'futur' ? ' · à venir' : ''}</small></span></label><span class="side"><input class="rep-in" id="rep-${r.m}" data-m="${r.m}" data-max="${r.max}" type="number" inputmode="decimal" min="0" step="any" value="${r.ec || ''}" placeholder="0" aria-label="Part de l’avance pour ${esc(monthLabel(r.m))}"></span></li>`).join('')}</ul>
+    <p class="small" id="rep-err" style="color:var(--crit)" hidden></p>
+    <button class="btn primary block" data-act="rep-save" data-id="${esc(l.id)}">Enregistrer la répartition</button>`);
+  repTotals();
+}
+function repTotals() {
+  const box = $('#rep-sum'); if (!box) return null;
+  const dispo = num(box.dataset.dispo); let t = 0, over = false;
+  document.querySelectorAll('.rep-in').forEach(i => { const v = num(i.value), bad = v < 0 || v > num(i.dataset.max) + 0.004; t += v; i.style.borderColor = bad ? 'var(--crit)' : ''; over = over || bad; });
+  t = Math.round(t * 100) / 100; const reste = Math.round((dispo - t) * 100) / 100;
+  box.innerHTML = `<dl class="kv"><dt>Avance disponible</dt><dd class="num">${money(dispo)}</dd><dt>Réparti sur les cotisations</dt><dd class="num">${money(t)}</dd><dt><b>Reste à lui rendre</b></dt><dd class="num" style="color:var(--${reste < -0.004 ? 'crit' : 'ink'})"><b>${money(reste)}</b></dd></dl>`;
+  const err = $('#rep-err'), bad = reste < -0.004;
+  err.textContent = bad ? 'Le total réparti dépasse l’avance disponible.' : over ? 'Un montant dépasse ce qui reste à payer pour ce mois.' : ''; err.hidden = !(bad || over);
+  return { ok: !bad && !over };
+}
+async function repSave(lotId) {
+  const r = repTotals(); if (!r || !r.ok) return;
+  const l = byId('lots', lotId); if (!l) return;
+  const alloc = [...document.querySelectorAll('.rep-in')].map(i => [i.dataset.m, Math.round(num(i.value) * 100) / 100]).filter(x => x[1] > 0);
+  const old = S.paiements.filter(p => isComp(p) && p.lotId === lotId);
+  closeSheet(); toast('Enregistrement de la répartition…');
+  for (const p of old) if (!await remove('paiements', p.id)) return;
+  const numero = 'C-' + today().replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase();
+  for (const [m, x] of alloc) if (!await save('paiements', null, { lotId, mois: m, montant: x, date: today(), mode: 'Compensation', ref: 'Avance de frais', numero })) return;
+  toast(alloc.length ? 'Répartition enregistrée sur ' + alloc.length + ' mois' : 'Répartition remise à zéro');
+}
 function rembSheet(r) {
   openSheet('Avance rendue', `<dl class="kv"><dt>Copropriétaire</dt><dd>${esc(lotName(byId('lots', r.lotId)))}</dd><dt>Montant</dt><dd class="num">${money(r.montant)}</dd><dt>Date</dt><dd>${frDate(r.date)}</dd><dt>Mode</dt><dd>${esc(r.mode || '')}</dd></dl>${S.admin ? `<button class="btn danger block" data-act="remb-del" data-id="${esc(r.id)}">Supprimer ce remboursement</button>` : ''}`);
 }
@@ -836,7 +887,11 @@ const ACTIONS = {
   'dep-pay': d => { const x = byId('depenses', d.id); if (x) payBillForm(x); },
   regler: d => reglerForm(d.id),
   solde: () => soldeForm(),
-  compenser: d => reglerForm(d.id, 'Compensation'),
+  compenser: d => { const l = byId('lots', d.id); if (l) repartSheet(l); },
+  repartir: d => { const l = byId('lots', d.id); if (l) repartSheet(l); },
+  'rep-auto': () => { let rest = num($('#rep-sum').dataset.dispo); document.querySelectorAll('.rep-in').forEach(i => { const v = Math.max(0, Math.min(num(i.dataset.max), Math.round(rest * 100) / 100)); i.value = v > 0 ? v : ''; rest -= v; }); repTotals(); },
+  'rep-zero': () => { document.querySelectorAll('.rep-in').forEach(i => i.value = ''); repTotals(); },
+  'rep-save': d => repSave(d.id),
   'lot-vue': d => { ui.lotVue = d.v; render(); },
   'dep-vue': d => { ui.depVue = d.v; render(); },
   'dep-filtre': d => { ui.depFiltre = d.v; render(); },
@@ -899,6 +954,7 @@ document.addEventListener('change', e => {
 document.addEventListener('change', e => { const k = { 'depuis-sel': 'depuis', 'jusqua-sel': 'jusqua' }[e.target.id]; if (k) { ui[k] = e.target.value; const id = e.target.id; render(); const el = $('#' + id); if (el) el.focus(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#scrim').hidden) closeSheet(); });
 document.addEventListener('input', e => {
+  if (e.target.classList && e.target.classList.contains('rep-in')) { repTotals(); return; }
   if (formCtx && formCtx.onInput && (e.target.id || '').startsWith('f-')) formCtx.onInput(e.target.id.slice(2));
   const L = { 'lot-search': '#lot-list', 'dep-search': '#dep-list' }[e.target.id]; if (!L) return;
   const q = e.target.value.trim().toLowerCase();
